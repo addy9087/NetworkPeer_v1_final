@@ -1,0 +1,115 @@
+# Copy to an ignored terraform.tfvars. This file contains non-secret account
+# and sizing inputs only. Never put access keys, database URLs, auth tokens,
+# JWT keys, API keys, or a Secrets Manager JSON value in a tfvars file.
+
+aws_region           = "us-east-1"
+environment          = "staging"
+project              = "networkpeer"
+evidence_bucket_name = "replace-with-globally-unique-networkpeer-evidence-bucket"
+web_cors_origins     = ["https://replace-with-your-web-origin.example"]
+# Only current objects left pending are expired. Confirmed current evidence and
+# all existing version-retention behavior remain outside this tag-filtered rule.
+evidence_pending_expiration_days = 7
+
+# These pre-existing state resources are not created by this configuration.
+# They scope the GitHub Terraform OIDC plan/apply roles.
+terraform_state_bucket_name = "replace-with-dedicated-terraform-state-bucket"
+terraform_lock_table_name   = "replace-with-terraform-lock-table"
+
+# The protected GitHub Environment must have deployment branch restrictions for
+# github_branch. AWS trusts the exact GitHub Environment subject, not a static
+# AWS access key or an unprotected workflow.
+github_repository  = "addy9087/Networkpeer"
+github_branch      = "main"
+github_environment = "staging"
+# Set github_oidc_subject only when the repository uses GitHub immutable OIDC
+# subject claims; otherwise leave this as null.
+github_oidc_subject = null
+
+# Explicit CIDRs prevent accidental overlap with existing VPCs, VPNs, or
+# peering connections. Set availability_zones explicitly in production so AZ
+# placement does not change when AWS exposes additional zones.
+availability_zones         = ["us-east-1a", "us-east-1b"]
+vpc_cidr                   = "10.42.0.0/16"
+public_subnet_cidrs        = ["10.42.0.0/20", "10.42.16.0/20"]
+private_app_subnet_cidrs   = ["10.42.32.0/20", "10.42.48.0/20"]
+private_data_subnet_cidrs  = ["10.42.64.0/20", "10.42.80.0/20"]
+
+# NAT cost and resilience choices:
+# - none: AWS endpoints only; Stripe, Twilio, Sentry, and other public APIs do not work.
+# - single: lower-cost egress with one-AZ NAT dependency.
+# - per_az: production egress resilience, with one NAT gateway per AZ.
+nat_gateway_mode               = "single"
+enable_interface_vpc_endpoints = true
+enable_s3_gateway_endpoint     = true
+enable_vpc_flow_logs           = true
+
+# Leave HTTPS disabled until ACM is issued. For a Route53-managed domain, set
+# domain_name, route53_zone_id, enable_https_listener, and enable_http_redirect
+# together. For external DNS, first request/validate ACM manually and set its ARN.
+domain_name           = null
+route53_zone_id        = null
+acm_certificate_arn    = null
+enable_https_listener  = false
+enable_http_redirect   = false
+enable_waf             = false
+alb_idle_timeout_seconds = 120
+
+# Bootstrap tags are task-definition placeholders only. Generic Terraform keeps
+# services parked because allow_service_activation is false. The protected
+# release workflow alone passes true with immutable commit-SHA tags after a
+# successful migration.
+api_image_tag            = "bootstrap"
+worker_image_tag         = "bootstrap"
+migrator_image_tag       = "bootstrap"
+allow_service_activation = false
+api_desired_count        = 1
+worker_desired_count     = 1
+api_min_capacity         = 1
+api_max_capacity         = 4
+worker_min_capacity      = 1
+worker_max_capacity      = 4
+
+# API uses the runtime image CMD. The worker must use compiled output from the
+# same runtime target. The migrator has a distinct Docker target and uses its
+# built-in migrate-and-provision.sh command unless explicitly overridden.
+worker_container_command    = ["node", "dist/background-worker.js"]
+migration_container_command = []
+
+# RDS manages its master password in an AWS-managed Secrets Manager secret;
+# Terraform never receives that value. PostGIS and least-privilege app roles
+# are created by the one-shot migration task, not by this configuration.
+rds_instance_class                = "db.t4g.medium"
+rds_allocated_storage_gb          = 50
+rds_max_allocated_storage_gb      = 100
+rds_multi_az                      = false
+rds_backup_retention_days         = 7
+rds_deletion_protection           = true
+rds_skip_final_snapshot           = false
+rds_final_snapshot_identifier     = "networkpeer-staging-postgres-final"
+rds_monitoring_interval_seconds   = 60
+rds_performance_insights_enabled  = true
+
+# Redis remains private, TLS-only, encrypted at rest, and AUTH-protected.
+# Do NOT set redis_auth_token here. Export it only for a local command from an
+# approved secret source, or use a protected GitHub Environment secret named
+# REDIS_AUTH_TOKEN. AWS requires the token at creation, so it is sensitive in
+# encrypted Terraform state even though this repository never stores its value.
+redis_node_type                 = "cache.t4g.small"
+redis_num_cache_clusters        = 2
+redis_automatic_failover_enabled = true
+redis_multi_az_enabled          = true
+
+# Optional existing SNS topic for alarms. Terraform does not create or subscribe
+# notification endpoints.
+alarm_sns_topic_arn = null
+
+# AWS Backup adds independent RDS recovery points. Vault Lock is intentionally
+# opt-in because it can prevent deletion until retention expires.
+backup_schedule                         = "cron(0 5 ? * * *)"
+backup_delete_after_days                = 35
+backup_vault_lock_min_retention_days    = null
+
+# Use a seven-day recovery window in staging/production. A value of zero is
+# intended only for short-lived sandbox accounts.
+secret_recovery_window_days = 7

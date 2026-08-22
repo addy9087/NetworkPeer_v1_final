@@ -3,7 +3,12 @@ import { buildApp } from "../src/index.js";
 import { closeConnections, pool } from "../src/db.js";
 import { signAccessToken } from "../src/auth.js";
 import { config } from "../src/config.js";
-import type { MediaStorage, MediaUploadTarget, StoredMediaObject } from "../src/services/media-storage-service.js";
+import type {
+  MediaDownloadTarget,
+  MediaStorage,
+  MediaUploadTarget,
+  StoredMediaObject,
+} from "../src/services/media-storage-service.js";
 import type { PushGateway, PushGatewayResult } from "../src/services/push-notification-service.js";
 
 const SEED_PHONES = ["+15550000901", "+15550000902"] as const;
@@ -57,6 +62,10 @@ class FakeMediaStorage implements MediaStorage {
         "x-amz-tagging": "networkpeer-evidence-state=pending",
       },
     };
+  }
+
+  async createDownloadTarget(): Promise<MediaDownloadTarget> {
+    return { url: "https://downloads.example.test/networkpeer" };
   }
 
   putObject(key: string, object: StoredMediaObject): void {

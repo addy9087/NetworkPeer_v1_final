@@ -1,0 +1,150 @@
+data "aws_caller_identity" "current" {}
+
+data "aws_partition" "current" {}
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+locals {
+  selected_availability_zones = coalesce(var.availability_zones, slice(data.aws_availability_zones.available.names, 0, min(2, length(data.aws_availability_zones.available.names))))
+
+  subnet_configuration = {
+    for index, availability_zone in local.selected_availability_zones : availability_zone => {
+      public_cidr       = var.public_subnet_cidrs[index]
+      private_app_cidr  = var.private_app_subnet_cidrs[index]
+      private_data_cidr = var.private_data_subnet_cidrs[index]
+    }
+  }
+
+  first_availability_zone = local.selected_availability_zones[0]
+  nat_gateway_azs = var.nat_gateway_mode == "none" ? toset([]) : (
+    var.nat_gateway_mode == "single" ? toset([local.first_availability_zone]) : toset(local.selected_availability_zones)
+  )
+
+  alb_name               = trimsuffix(substr("${local.name_prefix}-api", 0, 32), "-")
+  api_target_group_name  = trimsuffix(substr("${local.name_prefix}-api", 0, 32), "-")
+  rds_identifier         = trimsuffix(substr("${local.name_prefix}-postgres", 0, 63), "-")
+  redis_replication_name = trimsuffix(substr("${local.name_prefix}-redis", 0, 40), "-")
+  backup_vault_name      = coalesce(var.backup_vault_name, "${local.name_prefix}-rds")
+
+  private_app_subnet_ids = [
+    for availability_zone in local.selected_availability_zones : aws_subnet.private_app[availability_zone].id
+  ]
+  private_data_subnet_ids = [
+    for availability_zone in local.selected_availability_zones : aws_subnet.private_data[availability_zone].id
+  ]
+  public_subnet_ids = [
+    for availability_zone in local.selected_availability_zones : aws_subnet.public[availability_zone].id
+  ]
+
+  create_managed_certificate = var.domain_name != null && var.acm_certificate_arn == null
+  manage_acm_dns_validation  = local.create_managed_certificate && var.route53_zone_id != null
+  certificate_arn = coalesce(
+    var.acm_certificate_arn,
+    try(aws_acm_certificate_validation.application[0].certificate_arn, null),
+    try(aws_acm_certificate.application[0].arn, null),
+  )
+  service_activation_endpoint_ready = var.enable_https_listener && (
+    var.domain_name == null ? false : length(trimspace(var.domain_name)) > 0
+  )
+  # ALB source ENIs live only in these public subnets. Trusting this limited
+  # range permits forwarded client metadata without trusting the whole VPC.
+  trusted_alb_proxy_cidrs = join(",", var.public_subnet_cidrs)
+
+  runtime_secret_keys = toset([
+    "DATABASE_URL",
+    "DATABASE_ADMIN_URL",
+    "DATABASE_MEDIA_VERIFIER_URL",
+    "DATABASE_FINANCIAL_URL",
+    "REDIS_URL",
+    "JWT_SECRET",
+    "JWT_REFRESH_SECRET",
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_FROM_NUMBER",
+    "AWS_REGION",
+    "AWS_S3_BUCKET",
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "STRIPE_CONNECT_CLIENT_ID",
+    "PAYMENT_WEBHOOK_SECRET",
+    "FIREBASE_PROJECT_ID",
+    "FIREBASE_CLIENT_EMAIL",
+    "FIREBASE_PRIVATE_KEY",
+    "CORS_ORIGINS",
+    "SENTRY_DSN",
+  ])
+
+  migration_secret_keys = toset([
+    "DATABASE_MIGRATION_URL",
+    "NETWORKPEER_APP_DB_PASSWORD",
+    "NETWORKPEER_ADMIN_DB_PASSWORD",
+    "NETWORKPEER_MEDIA_DB_PASSWORD",
+    "NETWORKPEER_FINANCIAL_DB_PASSWORD",
+  ])
+
+  runtime_secret_references = [
+    for key in local.runtime_secret_keys : {
+      name      = key
+      valueFrom = "${aws_secretsmanager_secret.runtime.arn}:${key}::"
+    }
+  ]
+
+  migration_secret_references = [
+    for key in local.migration_secret_keys : {
+      name      = key
+      valueFrom = "${aws_secretsmanager_secret.migration.arn}:${key}::"
+    }
+  ]
+
+  # These values satisfy production config.ts invariants and deliberately take
+  # precedence over optional non-secret environment overrides.
+  api_container_environment = merge(var.api_environment_variables, {
+    NODE_ENV                          = "production"
+    PORT                              = tostring(var.api_container_port)
+    API_PREFIX                        = "/api/v1"
+    ALLOW_INSECURE_INTERNAL_TRANSPORT = "false"
+    SMS_PROVIDER                      = "twilio"
+    OTP_ECHO_IN_RESPONSE              = "false"
+    PAYMENT_GATEWAY                   = "stripe"
+    PAYMENT_DISPATCH_ENABLED          = "true"
+    BACKGROUND_QUEUES_ENABLED         = "false"
+    LOG_LEVEL                         = "info"
+    LOG_PRETTY                        = "false"
+    SENTRY_ENVIRONMENT                = var.environment
+    TRUST_PROXY_CIDRS                 = local.trusted_alb_proxy_cidrs
+  })
+
+  worker_container_environment = merge(var.worker_environment_variables, {
+    NODE_ENV                          = "production"
+    API_PREFIX                        = "/api/v1"
+    ALLOW_INSECURE_INTERNAL_TRANSPORT = "false"
+    SMS_PROVIDER                      = "twilio"
+    OTP_ECHO_IN_RESPONSE              = "false"
+    PAYMENT_GATEWAY                   = "stripe"
+    PAYMENT_DISPATCH_ENABLED          = "true"
+    BACKGROUND_QUEUES_ENABLED         = "true"
+    LOG_LEVEL                         = "info"
+    LOG_PRETTY                        = "false"
+    SENTRY_ENVIRONMENT                = var.environment
+  })
+
+  migration_container_environment = merge({
+    # The dedicated shell script enforces TLS for the migration URL. Development
+    # mode avoids loading unrelated serving-process secrets during bootstrap.
+    NODE_ENV = "development"
+  }, var.migration_environment_variables)
+
+  alarm_actions = var.alarm_sns_topic_arn == null ? [] : [var.alarm_sns_topic_arn]
+
+  terraform_state_bucket_arn        = "arn:${data.aws_partition.current.partition}:s3:::${var.terraform_state_bucket_name}"
+  terraform_lock_table_arn          = "arn:${data.aws_partition.current.partition}:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.terraform_lock_table_name}"
+  iam_role_arn_prefix               = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-*"
+  iam_policy_arn_prefix             = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:policy/${local.name_prefix}-*"
+  github_oidc_provider_expected_arn = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
+  github_oidc_subject = coalesce(
+    var.github_oidc_subject,
+    "repo:${var.github_repository}:environment:${var.github_environment}",
+  )
+}

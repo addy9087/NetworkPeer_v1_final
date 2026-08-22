@@ -1,0 +1,376 @@
+name: ECS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Protected GitHub Environment matching Terraform github_environment"
+        required: true
+        type: environment
+      confirmation:
+        description: "Type release after reviewing migrations, image commands, and the protected Terraform plan"
+        required: true
+        type: choice
+        options:
+          - "no"
+          - "release"
+        default: "no"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecs-release-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish Immutable Images
+    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'release'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_API_REPOSITORY_URL: ${{ vars.ECR_API_REPOSITORY_URL }}
+      ECR_WORKER_REPOSITORY_URL: ${{ vars.ECR_WORKER_REPOSITORY_URL }}
+      ECR_MIGRATOR_REPOSITORY_URL: ${{ vars.ECR_MIGRATOR_REPOSITORY_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials with the ECR publish role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ECS_PUBLISH_ROLE_ARN }}
+          role-session-name: networkpeer-ecr-publish
+      - name: Log in to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and publish immutable API, worker, and migrator images
+        working-directory: NetworkPeer-main
+        run: |
+          set -euo pipefail
+          image_tag="${GITHUB_SHA:?GITHUB_SHA must be set}"
+          if [[ ! "${image_tag}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "GITHUB_SHA must be a full lowercase Git commit SHA" >&2
+            exit 1
+          fi
+
+          api_image="networkpeer-api:${image_tag}"
+          worker_image="networkpeer-worker:${image_tag}"
+          migrator_image="networkpeer-migrator:${image_tag}"
+          docker build --platform linux/amd64 --target runtime --tag "${api_image}" .
+          docker build --platform linux/amd64 --target runtime --tag "${worker_image}" .
+          docker build --platform linux/amd64 --target migrator --tag "${migrator_image}" .
+          docker tag "${api_image}" "${ECR_API_REPOSITORY_URL}:${image_tag}"
+          docker tag "${worker_image}" "${ECR_WORKER_REPOSITORY_URL}:${image_tag}"
+          docker tag "${migrator_image}" "${ECR_MIGRATOR_REPOSITORY_URL}:${image_tag}"
+
+          publish_if_missing() {
+            local repository_url="$1"
+            local repository_name="${repository_url#*/}"
+            local image_details
+
+            if image_details="$(aws ecr describe-images \
+              --repository-name "${repository_name}" \
+              --image-ids "imageTag=${image_tag}" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text 2>&1)"; then
+              echo "${repository_url}:${image_tag} already exists (${image_details}); leaving immutable tag unchanged"
+              return 0
+            fi
+
+            if [[ "${image_details}" != *"ImageNotFoundException"* ]]; then
+              echo "Unable to inspect ${repository_url}:${image_tag}" >&2
+              echo "${image_details}" >&2
+              return 1
+            fi
+
+            docker push "${repository_url}:${image_tag}"
+          }
+
+          publish_if_missing "${ECR_API_REPOSITORY_URL}"
+          publish_if_missing "${ECR_WORKER_REPOSITORY_URL}"
+          publish_if_missing "${ECR_MIGRATOR_REPOSITORY_URL}"
+
+  park-migrate-activate:
+    name: Park Services, Migrate, and Activate
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: infra/terraform
+    env:
+      TF_IN_AUTOMATION: "true"
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+      TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE }}
+      TERRAFORM_TFVARS_JSON: ${{ vars.TERRAFORM_TFVARS_JSON }}
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_environment: ${{ vars.TERRAFORM_ENVIRONMENT }}
+      TF_VAR_evidence_bucket_name: ${{ vars.EVIDENCE_BUCKET_NAME }}
+      TF_VAR_web_cors_origins: ${{ vars.WEB_CORS_ORIGINS_JSON }}
+      TF_VAR_terraform_state_bucket_name: ${{ vars.TF_STATE_BUCKET }}
+      TF_VAR_terraform_lock_table_name: ${{ vars.TF_LOCK_TABLE }}
+      TF_VAR_github_repository: ${{ github.repository }}
+      TF_VAR_github_branch: main
+      TF_VAR_github_environment: ${{ inputs.target_environment }}
+      TF_VAR_redis_auth_token: ${{ secrets.REDIS_AUTH_TOKEN }}
+      ROLLBACK_STATE_FILE: ${{ runner.temp }}/networkpeer-ecs-rollback-state.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+      - name: Configure AWS credentials with the apply role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
+          role-session-name: networkpeer-ecs-release
+      - name: Materialize non-secret environment configuration
+        if: ${{ vars.TERRAFORM_TFVARS_JSON != '' }}
+        run: node -e 'require("fs").writeFileSync("environment.auto.tfvars.json", process.env.TERRAFORM_TFVARS_JSON)'
+      - name: Initialise remote state
+        run: >-
+          terraform init -input=false
+          -backend-config="bucket=${TF_STATE_BUCKET}"
+          -backend-config="key=${TF_STATE_KEY}"
+          -backend-config="region=${AWS_REGION}"
+          -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
+          -backend-config="encrypt=true"
+      - name: Capture prior service definitions and capacity for rollback
+        run: |
+          set -euo pipefail
+          cluster="$(terraform output -raw ecs_cluster_name)"
+          api_service="$(terraform output -raw api_service_name)"
+          worker_service="$(terraform output -raw worker_service_name)"
+          api_target_group="$(terraform output -raw api_target_group_arn)"
+
+          capture_service() {
+            local service_name="$1"
+            local service_state
+            local scaling_state
+
+            service_state="$(aws ecs describe-services \
+              --cluster "${cluster}" \
+              --services "${service_name}" \
+              --query 'services[0].{serviceName:serviceName,taskDefinition:taskDefinition,desiredCount:desiredCount,runningCount:runningCount,status:status}' \
+              --output json)"
+            test "${service_state}" != "null"
+
+            scaling_state="$(aws application-autoscaling describe-scalable-targets \
+              --service-namespace ecs \
+              --resource-ids "service/${cluster}/${service_name}" \
+              --scalable-dimension ecs:service:DesiredCount \
+              --query 'ScalableTargets[0].{minCapacity:MinCapacity,maxCapacity:MaxCapacity}' \
+              --output json)"
+            test "${scaling_state}" != "null"
+
+            jq -n \
+              --argjson service_state "${service_state}" \
+              --argjson scaling_state "${scaling_state}" \
+              '$service_state + $scaling_state'
+          }
+
+          jq -n \
+            --arg cluster "${cluster}" \
+            --arg api_target_group_arn "${api_target_group}" \
+            --argjson api "$(capture_service "${api_service}")" \
+            --argjson worker "$(capture_service "${worker_service}")" \
+            '{cluster: $cluster, apiTargetGroupArn: $api_target_group_arn, api: $api, worker: $worker}' \
+            > "${ROLLBACK_STATE_FILE}"
+
+          jq -e '
+            (.cluster | type == "string") and
+            (.api.serviceName | type == "string") and
+            (.api.taskDefinition | type == "string") and
+            (.api.desiredCount | type == "number") and
+            (.api.minCapacity | type == "number") and
+            (.api.maxCapacity | type == "number") and
+            (.worker.serviceName | type == "string") and
+            (.worker.taskDefinition | type == "string") and
+            (.worker.desiredCount | type == "number") and
+            (.worker.minCapacity | type == "number") and
+            (.worker.maxCapacity | type == "number")
+          ' "${ROLLBACK_STATE_FILE}" > /dev/null
+      - name: Park API and worker on the release task definitions
+        run: >-
+          terraform apply -input=false -auto-approve -lock-timeout=5m
+          -var="api_image_tag=${GITHUB_SHA}"
+          -var="worker_image_tag=${GITHUB_SHA}"
+          -var="migrator_image_tag=${GITHUB_SHA}"
+          -var="allow_service_activation=false"
+          -var="api_desired_count=0"
+          -var="worker_desired_count=0"
+          -var="api_min_capacity=0"
+          -var="worker_min_capacity=0"
+      - name: Wait for API and worker tasks to stop
+        run: |
+          cluster="$(terraform output -raw ecs_cluster_name)"
+          api_service="$(terraform output -raw api_service_name)"
+          worker_service="$(terraform output -raw worker_service_name)"
+          aws ecs wait services-stable --cluster "${cluster}" --services "${api_service}" "${worker_service}"
+      - name: Run one-shot database migration
+        run: |
+          cluster="$(terraform output -raw ecs_cluster_name)"
+          task_definition="$(terraform output -raw migration_task_definition_arn)"
+          task_security_group="$(terraform output -raw ecs_tasks_security_group_id)"
+          subnets="$(terraform output -json private_app_subnet_ids | jq -r 'join(",")')"
+          task_arn="$(aws ecs run-task \
+            --cluster "${cluster}" \
+            --launch-type FARGATE \
+            --task-definition "${task_definition}" \
+            --network-configuration "awsvpcConfiguration={subnets=[${subnets}],securityGroups=[${task_security_group}],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' \
+            --output text)"
+          test "${task_arn}" != "None"
+          aws ecs wait tasks-stopped --cluster "${cluster}" --tasks "${task_arn}"
+          exit_code="$(aws ecs describe-tasks \
+            --cluster "${cluster}" \
+            --tasks "${task_arn}" \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text)"
+          test "${exit_code}" = "0"
+      - name: Activate API and worker after successful migration
+        run: >-
+          terraform apply -input=false -auto-approve -lock-timeout=5m
+          -var="api_image_tag=${GITHUB_SHA}"
+          -var="worker_image_tag=${GITHUB_SHA}"
+          -var="migrator_image_tag=${GITHUB_SHA}"
+          -var="allow_service_activation=true"
+      - name: Verify activated API and worker release
+        run: |
+          set -euo pipefail
+          cluster="$(terraform output -raw ecs_cluster_name)"
+          api_service="$(terraform output -raw api_service_name)"
+          worker_service="$(terraform output -raw worker_service_name)"
+          expected_api_task_definition="$(terraform output -raw api_task_definition_arn)"
+          expected_worker_task_definition="$(terraform output -raw worker_task_definition_arn)"
+          api_target_group="$(terraform output -raw api_target_group_arn)"
+          canonical_api_url="$(terraform output -raw api_url)"
+
+          if [[ ! "${canonical_api_url}" =~ ^https://[A-Za-z0-9.-]+$ ]]; then
+            echo "Activation requires a canonical HTTPS api_url Terraform output" >&2
+            exit 1
+          fi
+
+          aws ecs wait services-stable --cluster "${cluster}" --services "${api_service}" "${worker_service}"
+
+          verify_service() {
+            local service_name="$1"
+            local expected_task_definition="$2"
+            local status
+            local task_definition
+            local desired_count
+            local running_count
+            local pending_count
+
+            status="$(aws ecs describe-services --cluster "${cluster}" --services "${service_name}" --query 'services[0].status' --output text)"
+            task_definition="$(aws ecs describe-services --cluster "${cluster}" --services "${service_name}" --query 'services[0].taskDefinition' --output text)"
+            desired_count="$(aws ecs describe-services --cluster "${cluster}" --services "${service_name}" --query 'services[0].desiredCount' --output text)"
+            running_count="$(aws ecs describe-services --cluster "${cluster}" --services "${service_name}" --query 'services[0].runningCount' --output text)"
+            pending_count="$(aws ecs describe-services --cluster "${cluster}" --services "${service_name}" --query 'services[0].pendingCount' --output text)"
+
+            test "${status}" = "ACTIVE"
+            test "${task_definition}" = "${expected_task_definition}"
+            test "${desired_count}" -gt 0
+            test "${running_count}" = "${desired_count}"
+            test "${pending_count}" = "0"
+          }
+
+          verify_service "${api_service}" "${expected_api_task_definition}"
+          verify_service "${worker_service}" "${expected_worker_task_definition}"
+          aws elbv2 wait target-in-service --target-group-arn "${api_target_group}"
+
+          api_desired_count="$(aws ecs describe-services --cluster "${cluster}" --services "${api_service}" --query 'services[0].desiredCount' --output text)"
+          healthy_target_count="$(aws elbv2 describe-target-health --target-group-arn "${api_target_group}" --query 'length(TargetHealthDescriptions[?TargetHealth.State==`healthy`])' --output text)"
+          test "${healthy_target_count}" -ge "${api_desired_count}"
+
+          verify_public_endpoint() {
+            local path="$1"
+            local attempt
+
+            for attempt in {1..6}; do
+              if curl \
+                --fail \
+                --silent \
+                --show-error \
+                --output /dev/null \
+                --write-out '%{http_code}' \
+                --connect-timeout 10 \
+                --max-time 20 \
+                --proto '=https' \
+                --tlsv1.2 \
+                "${canonical_api_url}${path}" | grep -qx '200'; then
+                return 0
+              fi
+              sleep 10
+            done
+
+            echo "Canonical endpoint did not return HTTP 200: ${path}" >&2
+            return 1
+          }
+
+          verify_public_endpoint "/api/v1/live"
+          verify_public_endpoint "/api/v1/health"
+      - name: Restore prior release after migration or verification failure
+        if: ${{ failure() }}
+        run: |
+          set -euo pipefail
+          if [[ ! -s "${ROLLBACK_STATE_FILE}" ]]; then
+            echo "No rollback state was captured; there is no prior release to restore."
+            exit 0
+          fi
+
+          cluster="$(jq -er '.cluster' "${ROLLBACK_STATE_FILE}")"
+          api_target_group="$(jq -er '.apiTargetGroupArn' "${ROLLBACK_STATE_FILE}")"
+
+          restore_service() {
+            local service_key="$1"
+            local service_name
+            local task_definition
+            local desired_count
+            local min_capacity
+            local max_capacity
+
+            service_name="$(jq -er ".${service_key}.serviceName" "${ROLLBACK_STATE_FILE}")"
+            task_definition="$(jq -er ".${service_key}.taskDefinition" "${ROLLBACK_STATE_FILE}")"
+            desired_count="$(jq -er ".${service_key}.desiredCount" "${ROLLBACK_STATE_FILE}")"
+            min_capacity="$(jq -er ".${service_key}.minCapacity" "${ROLLBACK_STATE_FILE}")"
+            max_capacity="$(jq -er ".${service_key}.maxCapacity" "${ROLLBACK_STATE_FILE}")"
+
+            aws application-autoscaling register-scalable-target \
+              --service-namespace ecs \
+              --resource-id "service/${cluster}/${service_name}" \
+              --scalable-dimension ecs:service:DesiredCount \
+              --min-capacity "${min_capacity}" \
+              --max-capacity "${max_capacity}"
+            aws ecs update-service \
+              --cluster "${cluster}" \
+              --service "${service_name}" \
+              --task-definition "${task_definition}" \
+              --desired-count "${desired_count}" \
+              > /dev/null
+          }
+
+          restore_service api
+          restore_service worker
+
+          api_service="$(jq -er '.api.serviceName' "${ROLLBACK_STATE_FILE}")"
+          worker_service="$(jq -er '.worker.serviceName' "${ROLLBACK_STATE_FILE}")"
+          api_desired_count="$(jq -er '.api.desiredCount' "${ROLLBACK_STATE_FILE}")"
+          aws ecs wait services-stable --cluster "${cluster}" --services "${api_service}" "${worker_service}"
+
+          if (( api_desired_count > 0 )); then
+            aws elbv2 wait target-in-service --target-group-arn "${api_target_group}"
+            healthy_target_count="$(aws elbv2 describe-target-health --target-group-arn "${api_target_group}" --query 'length(TargetHealthDescriptions[?TargetHealth.State==`healthy`])' --output text)"
+            test "${healthy_target_count}" -ge "${api_desired_count}"
+          fi

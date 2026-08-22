@@ -1,0 +1,5 @@
+# Copy to networkpeer.development.local.properties. This file is ignored.
+API_BASE_URL=http://10.0.2.2:3000/api/v1/
+STRIPE_PUBLISHABLE_KEY=pk_test_replace_me
+REALTIME_URL=http://10.0.2.2:3000
+REALTIME_ORIGIN=

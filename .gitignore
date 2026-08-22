@@ -3,3 +3,32 @@
 
 # macOS junk
 .DS_Store
+
+# Environment files and cloud credentials. Commit only explicit examples.
+.env
+.env.*
+!.env.example
+!*.env.example
+*.pem
+*.key
+*.p12
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+
+# Terraform state and local overrides can contain resource IDs and secrets.
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!.tfvars.example
+!.tfvars.json.example
+.terraform/
+
+# Native build products and local IDE state.
+**/.gradle/
+**/build/
+**/.idea/
+**/*.xcuserstate
+**/xcuserdata/
+**/DerivedData/

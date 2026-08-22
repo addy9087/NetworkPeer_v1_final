@@ -1,0 +1,465 @@
+version: 0.2.3
+title: NetworkPeer mobile contract
+description: >-
+  Mobile-safe API projections for NetworkPeer. PostgreSQL is authoritative and
+  mobile applications use authenticated HTTP, Socket.IO hints, and presigned S3
+  POSTs only. This file never grants direct database or AWS access.
+
+wire:
+  base_url: https://api.example.com/api/v1
+  authorization: "Authorization: Bearer <access_token>"
+  success_envelope:
+    success: true
+    data: "<payload>"
+    error: null
+  failure_envelope:
+    success: false
+    data: null
+    error:
+      code: "<stable_code>"
+      message: "<safe_message>"
+  ids: uuid
+  timestamps: ISO-8601 UTC strings
+  cursors: decimal strings
+  point: "{ type: Point, coordinates: [longitude, latitude] }"
+
+push:
+  fcm_hint:
+    transport: data-only
+    android: { priority: HIGH }
+    apns:
+      headers: { apns-push-type: background, apns-priority: "5" }
+      payload: { aps: { content-available: 1 } }
+    data:
+      recipient_user_id: uuid
+      cursor: decimal-string
+      topic: sync_topic
+      title: string
+      body: string
+      job_id: "uuid|optional"
+    event_data: "Additional server-defined string, number, or boolean fields; nested values are omitted."
+    handling: >-
+      Reject alert-style or malformed payloads. Display only when recipient_user_id
+      equals the current authenticated user. Treat the hint as non-authoritative and
+      reconcile through the authenticated sync API. Payloads without a matching active
+      account must be discarded; logout deregisters the current token when transport permits.
+
+enums:
+  user_role: [CLIENT, WORKER, ADMIN]
+  job_status:
+    [FUNDING, POSTED, ASSIGNED, EN_ROUTE, AT_LOCATION, IN_PROGRESS, SUBMITTED,
+     APPROVED, COMPLETED, CANCELLED, DISPUTED]
+  escrow_status: [UNFUNDED, PENDING, HELD, RELEASED, FROZEN, REFUNDED]
+  worker_verification_status: [PENDING, VERIFIED, REJECTED, SUSPENDED]
+  subtask_status: [PENDING, IN_PROGRESS, COMPLETED, SKIPPED]
+  media_type: [IMAGE, VIDEO, AUDIO, DOCUMENT]
+  media_status: [PENDING, UPLOADED, VERIFIED, REJECTED]
+  payment_operation_status: [CREATED, PENDING, SUCCEEDED, FAILED, CANCELLED]
+  transaction_type:
+    [ESCROW_HOLD, ESCROW_RELEASE, WORKER_PAYOUT, PAYOUT_REVERSAL, PLATFORM_FEE,
+     REFUND, TOP_UP, WITHDRAWAL]
+  transaction_status: [PENDING, COMPLETED, FAILED, REVERSED]
+  push_platform: [IOS, ANDROID, WEB]
+  sync_topic:
+    [JOB_CREATED, JOB_ASSIGNED, JOB_STATUS_CHANGED, JOB_CANCELLED, JOB_REASSIGNED,
+     EVIDENCE_UPLOADED, LEDGER_POSTED, NOTIFICATION_READ, SYSTEM]
+
+models:
+  token_pair:
+    access_token: string
+    refresh_token: string
+    expires_in: integer
+    user:
+      id: uuid
+      role: user_role
+      phone: string
+  otp_delivery:
+    transport: "string|optional"
+    to: "string|null|optional"
+  job:
+    id: uuid
+    client_id: uuid
+    worker_id: "uuid|null"
+    title: string
+    description: string
+    category: string
+    status: job_status
+    priority: integer
+    budget_cents: integer
+    platform_fee_cents: integer
+    currency: string
+    escrow_status: escrow_status
+    funded_at: "timestamp|null"
+    location: point
+    address: "string|null"
+    scheduled_at: "timestamp|null"
+    started_at: "timestamp|null"
+    completed_at: "timestamp|null"
+    cancelled_at: "timestamp|null"
+    cancellation_reason: "string|null"
+    metadata: object
+    created_at: timestamp
+    updated_at: timestamp
+  job_subtask:
+    id: uuid
+    job_id: uuid
+    title: string
+    description: "string|null"
+    sequence_order: integer
+    is_required: boolean
+    status: subtask_status
+    completed_at: "timestamp|null"
+    metadata: object
+    created_at: timestamp
+    updated_at: timestamp
+  worker_job_summary:
+    id: uuid
+    title: string
+    description: string
+    category: string
+    priority: integer
+    budget_cents: integer
+    currency: string
+    scheduled_at: "timestamp|null"
+    created_at: timestamp
+    distance_band: [UNDER_1_KM, 1_TO_5_KM, 5_TO_20_KM, 20KM_PLUS]
+  worker_job_detail:
+    id: uuid
+    title: string
+    description: string
+    category: string
+    status: job_status
+    priority: integer
+    budget_cents: integer
+    currency: string
+    scheduled_at: "timestamp|null"
+    created_at: timestamp
+    updated_at: timestamp
+    location: "point|null"
+    address: "string|null"
+    is_assigned_to_requester: boolean
+    subtasks: "job_subtask[]"
+  evidence_summary:
+    id: uuid
+    job_id: uuid
+    subtask_id: uuid
+    media_type: media_type
+    mime_type: "string|null"
+    file_size_bytes: "integer|null"
+    captured_at: timestamp
+    uploaded_at: "timestamp|null"
+    status: media_status
+  evidence_upload_target:
+    url: url
+    fields: "map<string, string>"
+    expires_at: timestamp
+  evidence_download_target:
+    url: https-url
+    expires_at: timestamp
+  client_evidence_review:
+    id: uuid
+    job_id: uuid
+    subtask_id: uuid
+    media_type: media_type
+    mime_type: "string|null"
+    file_size_bytes: "integer|null"
+    captured_at: timestamp
+    uploaded_at: timestamp
+    status: [UPLOADED, VERIFIED]
+    download: evidence_download_target
+  wallet_balance:
+    currency: string
+    availableBalanceCents: decimal-string
+    pendingEscrowCents: decimal-string
+    lifetimeEarningsCents: decimal-string
+    lifetimeSpendCents: decimal-string
+  sync_event:
+    cursor: decimal-string
+    event_id: uuid
+    topic: sync_topic
+    entity_type: string
+    entity_id: "uuid|null"
+    payload: object
+    created_at: timestamp
+    notification: "sync_notification|null"
+  sync_notification:
+    id: uuid
+    title: string
+    body: string
+    read_at: "timestamp|null"
+  notification:
+    id: uuid
+    cursor: decimal-string
+    topic: sync_topic
+    title: string
+    body: string
+    data: object
+    read_at: "timestamp|null"
+    created_at: timestamp
+  wallet_ledger_entry:
+    id: uuid
+    user_id: uuid
+    job_id: "uuid|null"
+    transaction_type: transaction_type
+    transaction_status: transaction_status
+    amount_cents: integer
+    balance_after_cents: integer
+    currency: string
+    reference_id: "string|null"
+    reference_type: "string|null"
+    description: string
+    metadata: object
+    idempotency_key: "string|null"
+    processed_at: "timestamp|null"
+    created_at: timestamp
+  notification_page:
+    items: "notification[]"
+    has_more: boolean
+    next_cursor: "decimal-string|null"
+  sync_page:
+    events: "sync_event[]"
+    has_more: boolean
+    next_cursor: decimal-string
+  worker_sync_page:
+    events: "sync_event[]"
+    jobs: "worker_job_detail[]"
+    snapshot_jobs: "worker_job_detail[]"
+    ledger_entries: "wallet_ledger_entry[]"
+    removed_job_ids: "uuid[]"
+    has_more: boolean
+    next_cursor: decimal-string
+  client_job_cancel_result:
+    job: job
+    cancelled: true
+  client_job_resolution_result:
+    job: job
+    action: [COMPLETE, DISPUTE]
+
+lifecycle:
+  job:
+    FUNDING: [POSTED, CANCELLED]
+    POSTED: [ASSIGNED]
+    ASSIGNED: [EN_ROUTE, DISPUTED]
+    EN_ROUTE: [AT_LOCATION, DISPUTED]
+    AT_LOCATION: [IN_PROGRESS, DISPUTED]
+    IN_PROGRESS: [SUBMITTED, DISPUTED]
+    SUBMITTED: [APPROVED, DISPUTED]
+    APPROVED: [COMPLETED, DISPUTED]
+    DISPUTED: [APPROVED]
+  client_visibility: "Created jobs begin FUNDING/UNFUNDED. Workers can discover only POSTED/HELD jobs."
+  worker_acceptance: "The PostgreSQL function is atomic; one concurrent eligible worker can win."
+  client_actions:
+    cancel: "Only an owning client can cancel an unfunded FUNDING job. Funded cancellation requires a separate refund workflow."
+    complete: "Only an owning client can complete an APPROVED job."
+    dispute: "Only an owning client can dispute an ASSIGNED, EN_ROUTE, AT_LOCATION, IN_PROGRESS, SUBMITTED, or APPROVED job."
+  evidence_review: "Only an owning client can view confirmed, version-pinned UPLOADED or VERIFIED evidence while the job is IN_PROGRESS, SUBMITTED, APPROVED, COMPLETED, or DISPUTED."
+  evidence_decisions: "Read-only. Client evidence rejection or rework is not exposed because no client-decision lifecycle or settlement policy exists."
+
+endpoints:
+  auth:
+    request_otp:
+      method: POST
+      path: /auth/otp/request
+      auth: none
+      body: { phone_number: E164-string }
+      data: { expiresInSeconds: integer, otpLength: integer, delivery: otp_delivery, otp: "string|optional" }
+    verify_otp:
+      method: POST
+      path: /auth/otp/verify
+      auth: none
+      body: { phone_number: E164-string, otp: string, role: "CLIENT|WORKER|optional" }
+      data: token_pair
+    refresh:
+      method: POST
+      path: /auth/refresh
+      auth: none
+      body: { refresh_token: string }
+      data: token_pair
+    logout:
+      method: POST
+      path: /auth/logout
+      auth: "refresh-token; optional valid access bearer must identify the same user"
+      body: { refresh_token: string }
+      data: { logged_out: boolean }
+      behavior: >-
+        A valid refresh token revokes its own token family even when the local
+        access token is expired. Clients should not refresh solely to log out.
+  client:
+    create_job:
+      method: POST
+      path: /client/jobs
+      auth: CLIENT
+      body: { title: string, description: string, category: string, budget_cents: integer, currency: "string|optional", location: point, address: "string|optional", scheduled_at: "timestamp|optional", metadata: "object|optional", public_title: "string|optional", public_description: "string|optional", idempotency_key: "string|optional", subtasks: "job-subtask-create[]|optional" }
+      data: job
+    list_jobs:
+      method: GET
+      path: /client/jobs
+      auth: CLIENT
+      query: { status: "job_status|optional", page: "integer|optional", per_page: "integer|optional" }
+      data: { items: "job[]", total: integer, page: integer, perPage: integer }
+    get_job:
+      method: GET
+      path: /client/jobs/{jobId}
+      auth: CLIENT-owner
+      data: { job: job, subtasks: "job_subtask[]" }
+    review_evidence:
+      method: GET
+      path: /client/jobs/{jobId}/evidence
+      auth: CLIENT-owner
+      data: { evidence: "client_evidence_review[]" }
+    cancel_job:
+      method: POST
+      path: /client/jobs/{jobId}/cancel
+      auth: CLIENT-owner
+      body: { cancellation_reason: "string|optional" }
+      data: client_job_cancel_result
+    complete_job:
+      method: POST
+      path: /client/jobs/{jobId}/complete
+      auth: CLIENT-owner
+      body: none
+      data: client_job_resolution_result
+    dispute_job:
+      method: POST
+      path: /client/jobs/{jobId}/dispute
+      auth: CLIENT-owner
+      body: none
+      data: client_job_resolution_result
+    fund_job:
+      method: POST
+      path: /client/jobs/{jobId}/fund
+      auth: CLIENT-owner
+      body: { idempotency_key: string }
+      data: { operationId: uuid, ledgerTransactionId: uuid, amountCents: decimal-string, currency: string, status: payment_operation_status, dispatchRequired: boolean, providerReference: "string|null", clientSecret: "string|null" }
+    approve_job:
+      method: POST
+      path: /client/jobs/{jobId}/approve
+      auth: CLIENT-owner
+      body: { idempotency_key: string }
+      data: { jobId: uuid, status: job_status, settlementLedgerTransactionId: uuid, payoutOperationId: uuid, payoutAmountCents: decimal-string, currency: string, payoutStatus: payment_operation_status, payoutProviderReference: "string|null", payoutDispatchPending: boolean }
+    wallet:
+      method: GET
+      path: /client/wallet
+      auth: CLIENT
+      data: { balances: "wallet_balance[]" }
+  worker:
+    update_location:
+      method: POST
+      path: /worker/location
+      auth: WORKER
+      body: { latitude: number, longitude: number }
+      data: { updated_at: timestamp }
+    nearby_jobs:
+      method: GET
+      path: /worker/jobs/nearby
+      auth: WORKER-verified
+      query: { radius_km: "integer|optional", page: "integer|optional", per_page: "integer|optional" }
+      data: { items: "worker_job_summary[]", page: integer, perPage: integer, radius_km: integer, has_more: boolean, next_page: "integer|null" }
+    get_job:
+      method: GET
+      path: /worker/jobs/{jobId}
+      auth: WORKER-verified
+      data: worker_job_detail
+    accept_job:
+      method: POST
+      path: /worker/jobs/{jobId}/accept
+      auth: WORKER-verified
+      data: worker_job_detail
+    wallet:
+      method: GET
+      path: /worker/wallet
+      auth: WORKER
+      data: { balances: "wallet_balance[]" }
+  work:
+    advance_status:
+      method: POST
+      path: /work/status
+      auth: WORKER-verified
+      body: { job_id: uuid, status: "EN_ROUTE|AT_LOCATION|IN_PROGRESS" }
+      data: { job_id: uuid, status: "EN_ROUTE|AT_LOCATION|IN_PROGRESS" }
+    reserve_evidence:
+      method: POST
+      path: /work/upload-url
+      auth: WORKER-verified
+      body: { job_id: uuid, subtask_id: uuid, media_type: media_type, mime_type: string, file_size_bytes: integer, captured_at: timestamp, location: "point|optional", checksum_sha256: lowercase-64-hex, idempotency_key: string }
+      data: { evidence: evidence_summary, upload: "evidence_upload_target|null" }
+    confirm_evidence:
+      method: POST
+      path: /work/evidence
+      auth: WORKER-verified
+      body: { media_id: uuid }
+      data: evidence_summary
+    submit_work:
+      method: POST
+      path: /work/submit
+      auth: WORKER-verified
+      body: { job_id: uuid }
+      data: { job_id: uuid, status: SUBMITTED }
+  sync:
+    events:
+      method: GET
+      path: /sync
+      auth: any
+      query: { cursor: "decimal-string|optional", limit: "integer|optional" }
+      data: sync_page
+    worker_events:
+      method: GET
+      path: /worker/sync
+      auth: WORKER-verified
+      query: { cursor: "decimal-string|optional", limit: "integer|optional" }
+      data: worker_sync_page
+  notifications:
+    list:
+      method: GET
+      path: /notifications
+      auth: any
+      query: { before_cursor: "decimal-string|optional", limit: "integer|optional" }
+      data: notification_page
+    mark_all_read:
+      method: POST
+      path: /notifications/read-all
+      auth: any
+      body: none
+      data: { marked_count: integer }
+    mark_read:
+      method: POST
+      path: /notifications/{notificationId}/read
+      auth: any-owner
+      body: none
+      data: notification
+    register_device:
+      method: POST
+      path: /notifications/devices
+      auth: any
+      body: { token: string, platform: push_platform }
+      data: { id: uuid, platform: push_platform, active: boolean }
+    deregister_device:
+      method: DELETE
+      path: /notifications/devices
+      auth: any
+      body: { token: string }
+      data: { deactivated: boolean }
+
+s3_evidence_flow:
+  allowed_mime_types:
+    IMAGE: [image/jpeg, image/png, image/webp]
+    VIDEO: [video/mp4, video/quicktime, video/webm]
+    AUDIO: [audio/mpeg, audio/mp4, audio/wav, audio/webm]
+    DOCUMENT: [application/pdf]
+  requirements:
+    - Calculate SHA-256 for the exact local file before reserving.
+    - Send lowercase 64-character hex as checksum_sha256.
+    - Send every returned POST field unchanged and treat the S3 target as opaque.
+    - Do not use AWS SDK credentials, construct keys, or expose bucket names in UI.
+    - Confirm media_id through the API after a successful HTTP S3 POST.
+    - Retry with the same idempotency key only if metadata is identical.
+    - Treat evidence download targets as opaque and short-lived; do not persist or parse them.
+
+realtime:
+  socket_path: /api/v1/realtime
+  transport: websocket
+  connect_auth: "auth: { token: accessToken }"
+  server_events:
+    "sync:ready": { server_time: timestamp }
+    "sync:event": sync_event
+  recovery: "On connect/reconnect/event, request paginated /sync or /worker/sync until has_more is false."

@@ -89,6 +89,8 @@ services:
     restart: "no"
     environment:
       NODE_ENV: development
+      # Compose is the only approved plaintext migration topology.
+      NETWORKPEER_MIGRATION_ALLOW_INSECURE_TRANSPORT: "true"
       DATABASE_MIGRATION_URL: postgresql://networkpeer_migration:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/networkpeer
       NETWORKPEER_APP_DB_PASSWORD: ${NETWORKPEER_APP_DB_PASSWORD:?NETWORKPEER_APP_DB_PASSWORD must be set}
       NETWORKPEER_ADMIN_DB_PASSWORD: ${NETWORKPEER_ADMIN_DB_PASSWORD:?NETWORKPEER_ADMIN_DB_PASSWORD must be set}

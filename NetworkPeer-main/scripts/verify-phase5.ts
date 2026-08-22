@@ -3,7 +3,12 @@ import { signAccessToken } from "../src/auth.js";
 import { config } from "../src/config.js";
 import { closeConnections } from "../src/db.js";
 import { buildApp } from "../src/index.js";
-import type { MediaStorage, MediaUploadTarget, StoredMediaObject } from "../src/services/media-storage-service.js";
+import type {
+  MediaDownloadTarget,
+  MediaStorage,
+  MediaUploadTarget,
+  StoredMediaObject,
+} from "../src/services/media-storage-service.js";
 
 const client = new pg.Client({ connectionString: config.DATABASE_URL });
 const SEED_PHONES = ["+10000000201", "+10000000202", "+10000000203"] as const;
@@ -37,6 +42,10 @@ class FakeMediaStorage implements MediaStorage {
         "x-amz-tagging": "networkpeer-evidence-state=pending",
       },
     };
+  }
+
+  async createDownloadTarget(): Promise<MediaDownloadTarget> {
+    return { url: "https://downloads.example.test/networkpeer" };
   }
 
   putObject(key: string, object: StoredMediaObject): void {

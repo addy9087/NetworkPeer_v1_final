@@ -2,16 +2,22 @@ import {
   GetBucketEncryptionCommand,
   GetPublicAccessBlockCommand,
   GetBucketVersioningCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectTaggingCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { config } from "../config.js";
 
 export type MediaUploadTarget = {
   url: string;
   fields: Record<string, string>;
+};
+
+export type MediaDownloadTarget = {
+  url: string;
 };
 
 export type StoredMediaObject = {
@@ -31,6 +37,11 @@ export interface MediaStorage {
     checksumSha256Base64: string;
     maxUploadBytes: number;
   }): Promise<MediaUploadTarget>;
+  createDownloadTarget(input: {
+    bucket: string;
+    key: string;
+    versionId: string;
+  }): Promise<MediaDownloadTarget>;
   headObject(input: { bucket: string; key: string; versionId?: string }): Promise<StoredMediaObject>;
   setObjectState(input: {
     bucket: string;
@@ -112,6 +123,26 @@ export class S3MediaStorage implements MediaStorage {
         ["content-length-range", 1, input.maxUploadBytes],
       ],
     });
+  }
+
+  async createDownloadTarget(input: {
+    bucket: string;
+    key: string;
+    versionId: string;
+  }): Promise<MediaDownloadTarget> {
+    return {
+      url: await getSignedUrl(
+        this.client,
+        new GetObjectCommand({
+          Bucket: input.bucket,
+          Key: input.key,
+          VersionId: input.versionId,
+          ResponseCacheControl: "private, no-store",
+          ResponseContentDisposition: "attachment",
+        }),
+        { expiresIn: config.AWS_S3_PRESIGNED_URL_EXPIRY_SECONDS },
+      ),
+    };
   }
 
   async headObject(input: { bucket: string; key: string; versionId?: string }): Promise<StoredMediaObject> {

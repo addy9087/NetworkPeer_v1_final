@@ -3,6 +3,11 @@ import { z } from "zod";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { ok, fail } from "../contracts.js";
 import { jobService, JobServiceError } from "../services/job-service.js";
+import {
+  ClientEvidenceReviewService,
+  ClientEvidenceReviewServiceError,
+  clientEvidenceReviewService,
+} from "../services/client-evidence-review-service.js";
 import { parseBody } from "../utils/validation.js";
 import type { Point } from "../contracts.js";
 
@@ -77,15 +82,23 @@ const cancelJobSchema = z.object({
   cancellation_reason: z.string().trim().max(1000).optional(),
 }).strict();
 
+export type ClientJobsRoutesOptions = {
+  evidenceReviewService?: ClientEvidenceReviewService;
+};
+
 function handleJobError(request: FastifyRequest, reply: FastifyReply, err: unknown): unknown {
-  if (err instanceof JobServiceError) {
+  if (err instanceof JobServiceError || err instanceof ClientEvidenceReviewServiceError) {
     return reply.code(err.statusCode).send(fail(err.code, err.message));
   }
   request.log.error({ err }, "client jobs request failed");
   return reply.code(500).send(fail("INTERNAL_SERVER_ERROR", "An internal server error occurred"));
 }
 
-export default async function clientJobsRoutes(app: FastifyInstance): Promise<void> {
+export default async function clientJobsRoutes(
+  app: FastifyInstance,
+  options: ClientJobsRoutesOptions = {},
+): Promise<void> {
+  const evidenceReviewService = options.evidenceReviewService ?? clientEvidenceReviewService;
   app.register(
     async (child) => {
       child.addHook("onRequest", requireAuth);
@@ -148,6 +161,19 @@ export default async function clientJobsRoutes(app: FastifyInstance): Promise<vo
             params.data.jobId,
           );
           return ok(result);
+        } catch (err) {
+          return handleJobError(request, reply, err);
+        }
+      });
+
+      child.get("/client/jobs/:jobId/evidence", async (request, reply) => {
+        const params = jobParamsSchema.safeParse(request.params);
+        if (!params.success) {
+          return reply.code(400).send(fail("VALIDATION_ERROR", "Invalid job id"));
+        }
+        try {
+          reply.header("cache-control", "no-store");
+          return ok(await evidenceReviewService.listForClient(request.auth.userId, params.data.jobId));
         } catch (err) {
           return handleJobError(request, reply, err);
         }

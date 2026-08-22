@@ -1,0 +1,13 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.NetworkPeer" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorAccent">#4F46E5</item>
+        <item name="android:navigationBarColor">#F8FAFC</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:drawable/sym_def_app_icon</item>
+    </style>
+</resources>

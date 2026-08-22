@@ -1,0 +1,5 @@
+# Copy to networkpeer.production.local.properties. This file is ignored.
+API_BASE_URL=https://api.your-domain.example/api/v1/
+STRIPE_PUBLISHABLE_KEY=pk_live_replace_me
+REALTIME_URL=https://api.your-domain.example
+REALTIME_ORIGIN=https://app.your-domain.example

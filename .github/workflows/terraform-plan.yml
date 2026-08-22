@@ -1,0 +1,95 @@
+name: Terraform Parked Plan
+
+on:
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform-plan.yml"
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Protected GitHub Environment matching Terraform github_environment; this workflow only creates a parked plan"
+        required: true
+        type: environment
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Format and Validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+      - name: Initialise without remote state
+        run: terraform init -backend=false -input=false
+      - name: Validate configuration
+        run: terraform validate
+
+  plan:
+    name: Protected Parked Plan
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: infra/terraform
+    env:
+      TF_IN_AUTOMATION: "true"
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+      TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE }}
+      TERRAFORM_TFVARS_JSON: ${{ vars.TERRAFORM_TFVARS_JSON }}
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_environment: ${{ vars.TERRAFORM_ENVIRONMENT }}
+      TF_VAR_evidence_bucket_name: ${{ vars.EVIDENCE_BUCKET_NAME }}
+      TF_VAR_web_cors_origins: ${{ vars.WEB_CORS_ORIGINS_JSON }}
+      TF_VAR_terraform_state_bucket_name: ${{ vars.TF_STATE_BUCKET }}
+      TF_VAR_terraform_lock_table_name: ${{ vars.TF_LOCK_TABLE }}
+      TF_VAR_github_repository: ${{ github.repository }}
+      TF_VAR_github_branch: main
+      TF_VAR_github_environment: ${{ inputs.target_environment }}
+      TF_VAR_redis_auth_token: ${{ secrets.REDIS_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+      - name: Configure AWS credentials with the plan role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_TERRAFORM_PLAN_ROLE_ARN }}
+          role-session-name: networkpeer-terraform-plan
+      - name: Materialize non-secret environment configuration
+        if: ${{ vars.TERRAFORM_TFVARS_JSON != '' }}
+        run: node -e 'require("fs").writeFileSync("environment.auto.tfvars.json", process.env.TERRAFORM_TFVARS_JSON)'
+      - name: Initialise remote state
+        run: >-
+          terraform init -input=false
+          -backend-config="bucket=${TF_STATE_BUCKET}"
+          -backend-config="key=${TF_STATE_KEY}"
+          -backend-config="region=${AWS_REGION}"
+          -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
+          -backend-config="encrypt=true"
+      - name: Create parked infrastructure plan
+        run: >-
+          terraform plan -input=false -lock-timeout=5m -out=tfplan
+          -var="allow_service_activation=false"
+          -var="api_desired_count=0"
+          -var="worker_desired_count=0"
+          -var="api_min_capacity=0"
+          -var="worker_min_capacity=0"

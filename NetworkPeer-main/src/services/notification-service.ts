@@ -2,6 +2,7 @@ import { config } from "../config.js";
 import type { Notification, PushPlatform, SyncEvent } from "../contracts.js";
 import {
   DevicePushTokenOwnershipError,
+  deactivateDevicePushTokenForUser,
   getWorkerJobProfile,
   listLedgerEntriesByIds,
   listNotificationsForUser,
@@ -105,6 +106,10 @@ export class NotificationService {
       throw err;
     }
     return { id: device.id, platform: device.platform, active: device.isActive };
+  }
+
+  async deregisterDevice(userId: string, token: string): Promise<{ deactivated: boolean }> {
+    return { deactivated: await deactivateDevicePushTokenForUser(userId, token) };
   }
 
   async workerSync(userId: string, cursor: string, limit: number): Promise<{

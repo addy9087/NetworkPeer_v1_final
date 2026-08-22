@@ -331,7 +331,7 @@ The cursor is a PostgreSQL `BIGINT` serialized as a decimal string. Do not parse
 1. Keep `BACKGROUND_QUEUES_ENABLED=true` to run BullMQ workers inside the API process, or set it to `false` on API replicas and run `npm run worker` on dedicated worker replicas.
 2. Redis is queue transport, not the durable source of truth. The worker sweeps PostgreSQL `media_processing_outbox` and pending `sync_events`, so an enqueue failure or Redis restart only delays delivery.
 3. Media processing re-heads the exact accepted S3 `VersionId` and verifies size, MIME type, SHA-256 checksum, and ETag. It records processing completion without changing evidence acceptance status.
-4. Push processing claims one sync cursor immediately before delivery. A transient gateway failure releases the durable claim, and BullMQ retries the same cursor with exponential backoff.
+4. Push processing claims one sync cursor immediately before delivery. A transient gateway failure releases the durable claim with a PostgreSQL `push_not_before_at` due time set from FCM `Retry-After` (never less than one minute). BullMQ may retry its transport job early, but the durable claim query rejects that cursor until due and the database sweep re-enqueues it afterward.
 
 ## 7. Deployment Plan
 

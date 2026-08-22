@@ -1,0 +1,8 @@
+# This file is consumed by `terraform init -backend-config=backend.hcl`.
+# Replace the placeholders in an ignored backend.hcl file. Use a dedicated,
+# encrypted state bucket and DynamoDB lock table; neither is created here.
+bucket         = "replace-with-your-encrypted-terraform-state-bucket"
+key            = "networkpeer/staging/target.tfstate"
+region         = "us-east-1"
+dynamodb_table = "replace-with-your-terraform-lock-table"
+encrypt        = true

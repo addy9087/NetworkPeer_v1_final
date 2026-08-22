@@ -167,7 +167,7 @@ NETWORKPEER/                     <- one Git repository
 | Route file | Endpoints | What it's for |
 | --- | --- | --- |
 | `routes/system.ts` | `GET /live`, `GET /health` | Liveness + database/PostGIS health probes |
-| `routes/auth.ts` | `POST /auth/otp/request`, `/auth/otp/verify`, `/auth/refresh`, `/auth/logout`, `GET /auth/me` | Phone sign-in, tokens, session |
+| `routes/auth.ts` | `POST /auth/otp/request`, `/auth/otp/verify`, `/auth/refresh`, `/auth/logout`, `GET /auth/me` | Phone sign-in, tokens, session; logout revokes with a refresh token even after access expiry, while a valid bearer remains subject-bound |
 | `routes/client-jobs.ts` | create / list / detail / cancel jobs | Client job management |
 | `routes/worker-jobs.ts` | `GET /worker/jobs/nearby`, `GET /worker/jobs/:id`, `POST /worker/jobs/:id/accept` | Discovery + atomic acceptance |
 | `routes/work.ts` | status, upload URL, evidence confirm, submit | Worker task lifecycle + evidence |
@@ -207,7 +207,7 @@ advisory lock. They are forward-only: you never edit an applied migration; you a
 | Phase 1–5 core | `001`–`016` | PostGIS + enums, users/roles, jobs, lifecycle constraints, verified-worker admission, geospatial search, evidence reservations + S3 version pinning, secure function search paths |
 | Phase 6–7 sync + admin | `017`–`020` | Durable sync outbox, notifications, device tokens, commit-ordered cursors, append-only audit log, admin controls, suspension |
 | Phase 8 financial | `021`–`035` | Fund-before-publish lifecycle, ledger accounts/transactions, payment operations + webhook inbox, immutable postings, escrow settlement, zero-fee handling, suspension freezing |
-| Phase 8–9 hardening | `036`–`038` | Payout reversal compensation, leased dispatch retry, media-processing outbox, name-resolution fixes |
+| Phase 8–9 hardening | `036`–`039` | Payout reversal compensation, leased dispatch retry, media-processing outbox, name-resolution fixes, durable FCM retry due times |
 
 ### 5.6 Scripts and tests
 

@@ -60,8 +60,12 @@ export class AuthService {
     return rotateRefreshToken(refreshToken, signAccessToken);
   }
 
-  async logout(userId: string, refreshToken: string): Promise<void> {
-    await revokeRefreshToken(refreshToken, userId);
+  /**
+   * The refresh token authorizes revocation of its own family. `expectedUserId`
+   * is supplied only by callers that still have a valid access bearer.
+   */
+  async logout(refreshToken: string, expectedUserId?: string): Promise<void> {
+    await revokeRefreshToken(refreshToken, expectedUserId);
   }
 }
 

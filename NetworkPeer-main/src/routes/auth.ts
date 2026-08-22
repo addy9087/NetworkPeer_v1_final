@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { authService } from "../services/auth-service.js";
-import { AuthError } from "../auth.js";
+import { AuthError, verifyAccessToken } from "../auth.js";
 import { requireAuth } from "../middleware/auth.js";
 import { ok, fail } from "../contracts.js";
 import { parseBody } from "../utils/validation.js";
@@ -25,6 +25,8 @@ const verifyOtpSchema = z.object({
 const refreshSchema = z.object({
   refresh_token: z.string().min(1),
 }).strict();
+
+const BEARER_TOKEN_RE = /^Bearer\s+(.+)$/i;
 
 export default async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post("/auth/otp/request", async (request, reply) => {
@@ -70,13 +72,13 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post("/auth/logout", { onRequest: [requireAuth] }, async (request, reply) => {
+  app.post("/auth/logout", async (request, reply) => {
     const body = parseBody(refreshSchema, request.body);
     if (!body.ok) {
       return reply.code(400).send(fail("VALIDATION_ERROR", body.message));
     }
     try {
-      await authService.logout(request.auth.userId, body.value.refresh_token);
+      await authService.logout(body.value.refresh_token, optionalAccessTokenSubject(request));
       return ok({ logged_out: true });
     } catch (err) {
       return handleAuthError(request, reply, err);
@@ -90,6 +92,24 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       phone: request.auth.phone,
     });
   });
+}
+
+/**
+ * A signed refresh token is sufficient authority to revoke its own family. A
+ * still-valid bearer keeps the legacy caller/refresh-token subject binding,
+ * while an expired bearer cannot prevent local logout from revoking a valid
+ * server refresh session.
+ */
+function optionalAccessTokenSubject(request: FastifyRequest): string | undefined {
+  const authorization = request.headers.authorization;
+  const token = authorization ? BEARER_TOKEN_RE.exec(authorization)?.[1] : undefined;
+  if (!token) return undefined;
+
+  try {
+    return verifyAccessToken(token).sub;
+  } catch {
+    return undefined;
+  }
 }
 
 function handleAuthError(request: FastifyRequest, reply: FastifyReply, err: unknown): unknown {

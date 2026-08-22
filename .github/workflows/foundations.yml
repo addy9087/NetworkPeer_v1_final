@@ -1,0 +1,50 @@
+name: Native and Infrastructure Foundations
+
+on:
+  pull_request:
+    paths:
+      - "apps/**"
+      - "packages/api-contracts/**"
+      - "infra/terraform/**"
+      - ".github/workflows/foundations.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/**"
+      - "packages/api-contracts/**"
+      - "infra/terraform/**"
+      - ".github/workflows/foundations.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  swift-core:
+    name: Validate Swift API Core
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run contract tests
+        run: swift test
+
+  terraform-format-and-validate:
+    name: Validate Terraform ECS Target
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+      - name: Initialise without remote state
+        run: terraform init -backend=false
+      - name: Validate configuration
+        run: terraform validate

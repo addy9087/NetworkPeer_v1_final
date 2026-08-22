@@ -22,6 +22,9 @@ const deviceSchema = z.object({
   token: z.string().trim().min(16).max(4096),
   platform: pushPlatformSchema,
 }).strict();
+const deviceTokenSchema = z.object({
+  token: z.string().trim().min(16).max(4096),
+}).strict();
 
 function handleNotificationError(request: FastifyRequest, reply: FastifyReply, err: unknown): unknown {
   if (err instanceof NotificationServiceError) {
@@ -72,6 +75,16 @@ export default async function notificationRoutes(app: FastifyInstance): Promise<
           parsed.value.token,
           parsed.value.platform,
         )));
+      } catch (err) {
+        return handleNotificationError(request, reply, err);
+      }
+    });
+
+    child.delete("/notifications/devices", async (request, reply) => {
+      const parsed = parseBody(deviceTokenSchema, request.body);
+      if (!parsed.ok) return reply.code(400).send(fail("VALIDATION_ERROR", parsed.message));
+      try {
+        return ok(await notificationService.deregisterDevice(request.auth.userId, parsed.value.token));
       } catch (err) {
         return handleNotificationError(request, reply, err);
       }

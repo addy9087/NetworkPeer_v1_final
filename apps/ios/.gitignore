@@ -1,0 +1,11 @@
+.build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+GoogleService-Info.plist
+Config.xcconfig
+Config.Debug.local.xcconfig
+Config.Release.local.xcconfig
+*.mobileprovision
+*.p12

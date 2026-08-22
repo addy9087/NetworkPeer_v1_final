@@ -19,6 +19,7 @@ import financialRoutes from "./routes/financial.js";
 import paymentWebhookRoutes from "./routes/payment-webhooks.js";
 import { requireAuth } from "./middleware/auth.js";
 import { WorkEvidenceService } from "./services/work-evidence-service.js";
+import { ClientEvidenceReviewService } from "./services/client-evidence-review-service.js";
 import { mediaStorage, type MediaStorage } from "./services/media-storage-service.js";
 import { createPushGateway, type PushGateway } from "./services/push-notification-service.js";
 import { RealtimeHub } from "./services/realtime-hub.js";
@@ -136,7 +137,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   app.register(systemRoutes, { prefix: config.API_PREFIX });
   app.register(authRoutes, { prefix: config.API_PREFIX });
-  app.register(clientJobsRoutes, { prefix: config.API_PREFIX });
+  const selectedMediaStorage = options.mediaStorage ?? mediaStorage;
+  const clientEvidenceReviewService = new ClientEvidenceReviewService(selectedMediaStorage);
+  app.register(clientJobsRoutes, { prefix: config.API_PREFIX, evidenceReviewService: clientEvidenceReviewService });
   app.register(workerJobsRoutes, { prefix: config.API_PREFIX });
   app.register(adminWorkerRoutes, { prefix: config.API_PREFIX });
   app.register(adminRoutes, { prefix: config.API_PREFIX });
@@ -148,7 +151,6 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const paymentDispatcher = new PaymentDispatchRuntime(paymentGateway);
   app.register(financialRoutes, { prefix: config.API_PREFIX, ledger });
   app.register(paymentWebhookRoutes, { prefix: config.API_PREFIX, ledger });
-  const selectedMediaStorage = options.mediaStorage ?? mediaStorage;
   const backgroundRuntime = options.backgroundRuntime ?? new BackgroundQueueRuntime(
     selectedMediaStorage,
     options.pushGateway ?? createPushGateway(),

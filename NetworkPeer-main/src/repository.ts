@@ -734,6 +734,107 @@ export async function getMediaForWorker(mediaId: string, workerId: string): Prom
   return rows[0] ? mapMedia(rows[0] as Row) : null;
 }
 
+/**
+ * Server-only record used to sign a client-owned evidence download. Storage
+ * identifiers deliberately never leave the repository/service boundary.
+ */
+export type ClientEvidenceReviewMediaRecord = {
+  id: string;
+  jobId: string;
+  subtaskId: string;
+  mediaType: MediaType;
+  mimeType: string | null;
+  fileSizeBytes: number | null;
+  capturedAt: Date;
+  uploadedAt: Date;
+  status: Extract<JobSubtaskMedia["status"], "UPLOADED" | "VERIFIED">;
+  s3Bucket: string;
+  s3Key: string;
+  s3VersionId: string;
+};
+
+export type ClientEvidenceReviewRecords = {
+  jobStatus: JobStatus;
+  evidence: ClientEvidenceReviewMediaRecord[];
+};
+
+/**
+ * Returns only immutable, confirmed evidence for its owning client. The SQL
+ * join prevents object identifiers from being selected for an unreviewable job.
+ */
+export async function listEvidenceForClientReview(
+  jobId: string,
+  clientId: string,
+): Promise<ClientEvidenceReviewRecords | null> {
+  const { rows } = await pool.query<Row>(
+    `
+      SELECT
+        j.status AS job_status,
+        m.id AS media_id,
+        m.job_id,
+        m.subtask_id,
+        m.media_type,
+        m.mime_type,
+        m.file_size_bytes,
+        m.captured_at,
+        m.uploaded_at,
+        m.status AS media_status,
+        m.s3_bucket,
+        m.s3_key,
+        m.s3_version_id
+      FROM jobs AS j
+      LEFT JOIN job_subtask_media AS m
+        ON m.job_id = j.id
+        AND j.status IN ('IN_PROGRESS', 'SUBMITTED', 'APPROVED', 'COMPLETED', 'DISPUTED')
+        AND m.status IN ('UPLOADED', 'VERIFIED')
+        AND m.uploaded_at IS NOT NULL
+        AND m.s3_version_id IS NOT NULL
+        AND length(btrim(m.s3_version_id)) > 0
+        AND lower(btrim(m.s3_version_id)) <> 'null'
+      WHERE j.id = $1
+        AND j.client_id = $2
+      ORDER BY m.captured_at ASC NULLS LAST, m.id ASC
+    `,
+    [jobId, clientId],
+  );
+  const first = rows[0];
+  if (!first) return null;
+
+  const evidence = rows.flatMap((row): ClientEvidenceReviewMediaRecord[] => {
+    if (!row["media_id"]) return [];
+    const s3Bucket = row["s3_bucket"];
+    const s3Key = row["s3_key"];
+    const s3VersionId = row["s3_version_id"];
+    if (
+      typeof s3Bucket !== "string" ||
+      typeof s3Key !== "string" ||
+      typeof s3VersionId !== "string" ||
+      !s3Bucket ||
+      !s3Key ||
+      !s3VersionId
+    ) {
+      throw new Error("Reviewable evidence is missing immutable storage metadata");
+    }
+    return [{
+      id: String(row["media_id"]),
+      jobId: String(row["job_id"]),
+      subtaskId: String(row["subtask_id"]),
+      mediaType: row["media_type"] as MediaType,
+      mimeType: row["mime_type"] ? String(row["mime_type"]) : null,
+      fileSizeBytes: row["file_size_bytes"] === null || row["file_size_bytes"] === undefined
+        ? null
+        : Number(row["file_size_bytes"]),
+      capturedAt: new Date(row["captured_at"] as string),
+      uploadedAt: new Date(row["uploaded_at"] as string),
+      status: row["media_status"] as Extract<JobSubtaskMedia["status"], "UPLOADED" | "VERIFIED">,
+      s3Bucket,
+      s3Key,
+      s3VersionId,
+    }];
+  });
+  return { jobStatus: first["job_status"] as JobStatus, evidence };
+}
+
 export async function confirmMediaUpload(input: {
   mediaId: string;
   workerId: string;
@@ -1135,6 +1236,22 @@ export async function upsertDevicePushToken(input: {
   };
 }
 
+/** Deactivates a token only when it belongs to the authenticated account. */
+export async function deactivateDevicePushTokenForUser(userId: string, token: string): Promise<boolean> {
+  const result = await pool.query(
+    `
+      UPDATE device_push_tokens
+      SET is_active = FALSE,
+          updated_at = NOW()
+      WHERE user_id = $1
+        AND token = $2
+        AND is_active = TRUE
+    `,
+    [userId, token],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
 export class DevicePushTokenOwnershipError extends Error {
   constructor() {
     super("This device token is already registered to another account");
@@ -1183,7 +1300,7 @@ export async function listPushDeliveryCandidates(limit: number): Promise<string[
       FROM sync_events
       WHERE push_attempts < 5
         AND (
-          push_state = 'PENDING'
+          (push_state = 'PENDING' AND push_not_before_at <= NOW())
           OR (push_state = 'PROCESSING' AND push_claimed_at <= NOW() - INTERVAL '5 minutes')
         )
       ORDER BY id ASC
@@ -1203,7 +1320,7 @@ export async function claimPushDelivery(cursor: string): Promise<PendingPushDeli
         WHERE se.id = $1::bigint
           AND se.push_attempts < 5
           AND (
-            se.push_state = 'PENDING'
+            (se.push_state = 'PENDING' AND se.push_not_before_at <= NOW())
             OR (se.push_state = 'PROCESSING' AND se.push_claimed_at <= NOW() - INTERVAL '5 minutes')
           )
         FOR UPDATE
@@ -1211,6 +1328,7 @@ export async function claimPushDelivery(cursor: string): Promise<PendingPushDeli
         UPDATE sync_events se
         SET push_state = 'PROCESSING',
             push_claimed_at = NOW(),
+            push_not_before_at = NOW(),
             push_attempts = se.push_attempts + 1
         FROM candidate c
         WHERE se.id = c.id
@@ -1304,17 +1422,22 @@ export async function markPushDeliverySkipped(cursor: string): Promise<void> {
   );
 }
 
-export async function releasePushDelivery(cursor: string, error: string): Promise<void> {
+export async function releasePushDelivery(cursor: string, error: string, retryAfterMs = 0): Promise<void> {
+  const retryDelayMs = Number.isSafeInteger(retryAfterMs) ? Math.max(0, retryAfterMs) : 0;
   await pool.query(
     `
       UPDATE sync_events
       SET push_state = CASE WHEN push_attempts >= 5 THEN 'SKIPPED' ELSE 'PENDING' END,
           push_claimed_at = NULL,
+          push_not_before_at = CASE
+            WHEN push_attempts >= 5 THEN NOW()
+            ELSE NOW() + ($3::bigint * INTERVAL '1 millisecond')
+          END,
           push_last_error = LEFT($2, 1000)
       WHERE id = $1::bigint
         AND push_state = 'PROCESSING'
     `,
-    [cursor, error],
+    [cursor, error, retryDelayMs],
   );
 }
 

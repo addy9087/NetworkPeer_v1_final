@@ -1,0 +1,11 @@
+.gradle/
+build/
+local.properties
+networkpeer.*.local.properties
+*.jks
+*.keystore
+google-services.json
+/app/google-services.json
+/app/src/development/google-services.json
+/app/src/production/google-services.json
+captures/

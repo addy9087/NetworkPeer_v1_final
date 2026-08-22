@@ -57,6 +57,7 @@ export const transactionTypeSchema = z.enum([
   "ESCROW_HOLD",
   "ESCROW_RELEASE",
   "WORKER_PAYOUT",
+  "PAYOUT_REVERSAL",
   "PLATFORM_FEE",
   "REFUND",
   "TOP_UP",

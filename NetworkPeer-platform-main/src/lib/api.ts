@@ -116,7 +116,7 @@ export type EvidenceSummary = {
   file_size_bytes: number | null;
   captured_at: string;
   uploaded_at: string | null;
-  status: "PENDING" | "UPLOADED" | "REJECTED";
+  status: "PENDING" | "UPLOADED" | "VERIFIED" | "REJECTED";
 };
 
 export type EvidenceUploadTarget = {
@@ -458,7 +458,7 @@ export const api = {
   advanceWorkStatus(
     jobId: string,
     status: "EN_ROUTE" | "AT_LOCATION" | "IN_PROGRESS",
-  ): Promise<Job> {
+  ): Promise<{ job_id: string; status: "EN_ROUTE" | "AT_LOCATION" | "IN_PROGRESS" }> {
     return request("/work/status", {
       method: "POST",
       body: JSON.stringify({ job_id: jobId, status }),
@@ -516,7 +516,7 @@ export const api = {
       body: JSON.stringify({ media_id: mediaId }),
     });
   },
-  submitWork(jobId: string): Promise<Job> {
+  submitWork(jobId: string): Promise<{ job_id: string; status: "SUBMITTED" }> {
     return request("/work/submit", { method: "POST", body: JSON.stringify({ job_id: jobId }) });
   },
 };
