@@ -1,9 +1,9 @@
 import pg from "pg";
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import { Server as SocketIoServer, type Socket } from "socket.io";
-import { verifyAccessToken } from "../auth.js";
+import { roleFromCognitoGroups, verifyAccessToken } from "../auth.js";
 import { config } from "../config.js";
-import { getSyncEventByCursor, getUserById } from "../repository.js";
+import { getSyncEventByCursor, getUserByCognitoSub, getUserById } from "../repository.js";
 import type { UserRole } from "../contracts.js";
 
 type RealtimePrincipal = {
@@ -216,9 +216,10 @@ export class RealtimeHub {
     if (!this.enabled) throw new Error("UNAVAILABLE");
     const token = socketToken(socket);
     if (!token) throw new Error("UNAUTHORIZED");
-    const claims = verifyAccessToken(token);
-    const user = await getUserById(claims.sub);
-    if (!user || !user.is_active || !user.is_verified) throw new Error("UNAUTHORIZED");
+    const claims = await verifyAccessToken(token);
+    const tokenRole = roleFromCognitoGroups(claims.groups);
+    const user = await getUserByCognitoSub(claims.sub);
+    if (!user || !user.is_active || !user.is_verified || user.role !== tokenRole) throw new Error("UNAUTHORIZED");
     return { userId: user.id, role: user.role, expiresAt: claims.exp * 1000 };
   }
 

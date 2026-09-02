@@ -1,14 +1,10 @@
 import pg from "pg";
 import { io, type Socket } from "socket.io-client";
-import {
-  AuthError,
-  issueTokenPair,
-  rotateRefreshToken,
-  signAccessToken,
-} from "../src/auth.js";
 import { config } from "../src/config.js";
-import { closeConnections, redis } from "../src/db.js";
+import { closeConnections } from "../src/db.js";
 import { buildApp } from "../src/index.js";
+import { issueTestCognitoAccessToken, resetTestCognitoVerifier } from "../src/testing/cognito-test-verifier.js";
+import { randomUUID } from "node:crypto";
 
 const client = new pg.Client({ connectionString: config.DATABASE_URL });
 const SEED_PHONES = [
@@ -74,7 +70,7 @@ async function cleanup(): Promise<void> {
     `SELECT id FROM users WHERE phone_number = ANY($1)`,
     [SEED_PHONES],
   );
-  const ids = result.rows.map((row) => row.id);
+  const ids = result.rows.map((row: { id: string }) => row.id);
   if (ids.length === 0) return;
   await client.query("BEGIN");
   try {
@@ -88,6 +84,7 @@ async function cleanup(): Promise<void> {
     await client.query("ROLLBACK");
     throw err;
   }
+  resetTestCognitoVerifier();
 }
 
 async function main(): Promise<void> {
@@ -100,20 +97,27 @@ async function main(): Promise<void> {
     const address = await app.listen({ port: 0, host: "127.0.0.1" });
     const users = await client.query<{
       id: string;
+      cognito_sub: string;
       phone_number: string;
       role: "CLIENT" | "WORKER" | "ADMIN";
     }>(
       `
-        INSERT INTO users (phone_number, full_name, role, is_verified)
+        INSERT INTO users (cognito_sub, phone_number, full_name, role, is_verified)
         VALUES
-          ($1, 'Phase 7 Client', 'CLIENT', TRUE),
-          ($2, 'Phase 7 Worker A', 'WORKER', TRUE),
-          ($3, 'Phase 7 Worker B', 'WORKER', TRUE),
-          ($4, 'Phase 7 Suspended Client', 'CLIENT', TRUE),
-          ($5, 'Phase 7 Admin', 'ADMIN', TRUE)
-        RETURNING id, phone_number, role
+          ($1, $2, 'Phase 7 Client', 'CLIENT', TRUE),
+          ($3, $4, 'Phase 7 Worker A', 'WORKER', TRUE),
+          ($5, $6, 'Phase 7 Worker B', 'WORKER', TRUE),
+          ($7, $8, 'Phase 7 Suspended Client', 'CLIENT', TRUE),
+          ($9, $10, 'Phase 7 Admin', 'ADMIN', TRUE)
+        RETURNING id, cognito_sub, phone_number, role
       `,
-      [...SEED_PHONES],
+      [
+        `test-cognito:${randomUUID()}`, SEED_PHONES[0],
+        `test-cognito:${randomUUID()}`, SEED_PHONES[1],
+        `test-cognito:${randomUUID()}`, SEED_PHONES[2],
+        `test-cognito:${randomUUID()}`, SEED_PHONES[3],
+        `test-cognito:${randomUUID()}`, SEED_PHONES[4],
+      ],
     );
     const byPhone = new Map(users.rows.map((row) => [row.phone_number, row]));
     const owner = byPhone.get(SEED_PHONES[0]);
@@ -153,15 +157,16 @@ async function main(): Promise<void> {
     const [reassignJob, cancelJob, suspendedClientJob] = jobs.rows.map((row) => row.id);
     if (!reassignJob || !cancelJob || !suspendedClientJob) throw new Error("Could not create Phase 7 jobs");
 
-    const ownerToken = signAccessToken({ id: owner.id, role: "CLIENT", phone: owner.phone_number });
-    const workerAToken = signAccessToken({ id: workerA.id, role: "WORKER", phone: workerA.phone_number });
-    const workerBToken = signAccessToken({ id: workerB.id, role: "WORKER", phone: workerB.phone_number });
-    const suspendedClientToken = signAccessToken({
+    const ownerToken = issueTestCognitoAccessToken({ id: owner.id, cognitoSub: owner.cognito_sub, role: "CLIENT", phone: owner.phone_number });
+    const workerAToken = issueTestCognitoAccessToken({ id: workerA.id, cognitoSub: workerA.cognito_sub, role: "WORKER", phone: workerA.phone_number });
+    const workerBToken = issueTestCognitoAccessToken({ id: workerB.id, cognitoSub: workerB.cognito_sub, role: "WORKER", phone: workerB.phone_number });
+    const suspendedClientToken = issueTestCognitoAccessToken({
       id: suspendedClient.id,
+      cognitoSub: suspendedClient.cognito_sub,
       role: "CLIENT",
       phone: suspendedClient.phone_number,
     });
-    const adminToken = signAccessToken({ id: admin.id, role: "ADMIN", phone: admin.phone_number });
+    const adminToken = issueTestCognitoAccessToken({ id: admin.id, cognitoSub: admin.cognito_sub, role: "ADMIN", phone: admin.phone_number });
     const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
     // eslint-disable-next-line no-console
@@ -346,10 +351,7 @@ async function main(): Promise<void> {
     body = parseEnvelope(response.body);
     assert(response.statusCode === 200 && body.success, "audit log accepts a bounded pagination cursor");
 
-    const suspendedPair = await issueTokenPair(
-      { id: suspendedClient.id, role: "CLIENT", phone: suspendedClient.phone_number },
-      signAccessToken,
-    );
+    // Test admin suspension - Cognito disables the user, which prevents new tokens
     suspendedSocket = await connectSocket(address, suspendedClientToken);
     const disconnected = waitForDisconnect(suspendedSocket);
     response = await app.inject({
@@ -360,8 +362,8 @@ async function main(): Promise<void> {
     });
     body = parseEnvelope(response.body);
     assert(
-      response.statusCode === 200 && body.data?.["is_active"] === false && body.data?.["refresh_sessions_revoked"] === true,
-      "admin suspension atomically deactivates the user and revokes refresh sessions",
+      response.statusCode === 200 && body.data?.["is_active"] === false,
+      "admin suspension atomically deactivates the user",
     );
     const frozenSuspendedJob = await client.query<{ status: string; escrow_status: string }>(
       `SELECT status, escrow_status FROM jobs WHERE id = $1`,
@@ -372,19 +374,11 @@ async function main(): Promise<void> {
       "suspension freezes funded client work for dispute or refund handling",
     );
     await disconnected;
-    assert(
-      await redis.get(`refresh:user:${suspendedClient.id}:revoked`) === "1",
-      "suspension creates a refresh-token revocation marker",
-    );
+    // With Cognito, the suspended user's existing access tokens remain valid until expiry,
+    // but they cannot obtain new tokens. The middleware checks is_active on each request.
     response = await app.inject({ method: "GET", url: "/api/v1/auth/me", headers: bearer(suspendedClientToken) });
     body = parseEnvelope(response.body);
     assert(response.statusCode === 401 && body.error?.code === "TOKEN_INVALID", "suspension blocks existing access tokens");
-    try {
-      await rotateRefreshToken(suspendedPair.refresh_token, signAccessToken);
-      throw new Error("Expected suspended refresh token to fail");
-    } catch (err) {
-      assert(err instanceof AuthError, "suspension blocks refresh-token minting");
-    }
 
     response = await app.inject({
       method: "GET",

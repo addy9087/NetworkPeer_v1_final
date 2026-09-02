@@ -36,13 +36,23 @@ private_app_subnet_cidrs   = ["10.42.32.0/20", "10.42.48.0/20"]
 private_data_subnet_cidrs  = ["10.42.64.0/20", "10.42.80.0/20"]
 
 # NAT cost and resilience choices:
-# - none: AWS endpoints only; Stripe, Twilio, Sentry, and other public APIs do not work.
+# - none: AWS endpoints only. Cognito works through its PrivateLink endpoint,
+#   but Stripe, Firebase, Sentry, and other public APIs do not work.
 # - single: lower-cost egress with one-AZ NAT dependency.
 # - per_az: production egress resilience, with one NAT gateway per AZ.
 nat_gateway_mode               = "single"
 enable_interface_vpc_endpoints = true
 enable_s3_gateway_endpoint     = true
 enable_vpc_flow_logs           = true
+
+# Cognito Custom Auth uses transactional SNS SMS. New AWS accounts commonly
+# start in the SNS SMS sandbox, where only verified destination numbers work.
+# Configure an approved sender ID or origination number only where supported.
+cognito_challenge_ttl_minutes       = 5
+cognito_max_attempts                = 5
+cognito_refresh_token_validity_days = 7
+cognito_sms_sender_id               = null
+cognito_sms_origination_number      = null
 
 # Leave HTTPS disabled until ACM is issued. For a Route53-managed domain, set
 # domain_name, route53_zone_id, enable_https_listener, and enable_http_redirect

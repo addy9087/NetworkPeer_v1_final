@@ -4,7 +4,11 @@ import supertest from "supertest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../src/index.js";
 import { closeConnections, pool } from "../../src/db.js";
-import { signAccessToken } from "../../src/auth.js";
+import {
+  cognitoSubForTestUser,
+  issueTestCognitoAccessToken,
+  resetTestCognitoVerifier,
+} from "../../src/testing/cognito-test-verifier.js";
 import { config } from "../../src/config.js";
 import { signPaymentWebhook } from "../../src/services/payment-gateway-service.js";
 import type { BackgroundRuntime } from "../../src/services/background-queue-service.js";
@@ -20,7 +24,7 @@ const noOpBackgroundRuntime: BackgroundRuntime = {
 };
 
 function bearer(user: SeedUser): string {
-  return `Bearer ${signAccessToken({ id: user.id, role: user.role, phone: user.phone })}`;
+  return `Bearer ${issueTestCognitoAccessToken({ id: user.id, role: user.role, phone: user.phone })}`;
 }
 
 function assertSafeE2eDatabase(): void {
@@ -76,6 +80,10 @@ describe.runIf(runE2e)("E2E: funded client job acceptance", () => {
       [`+1555${seed}1`, `+1666${seed}2`, `+1777${seed}3`],
     );
     users = rows;
+    await Promise.all(users.map((user) => pool.query(
+      `UPDATE users SET cognito_sub = $1 WHERE id = $2`,
+      [cognitoSubForTestUser(user.id), user.id],
+    )));
     const workers = users.filter((user) => user.role === "WORKER");
     await pool.query(
       `
@@ -96,6 +104,7 @@ describe.runIf(runE2e)("E2E: funded client job acceptance", () => {
     await app?.close();
     await deleteSeedData(users.map((user) => user.id));
     await closeConnections();
+    resetTestCognitoVerifier();
   });
 
   it("creates, funds, publishes, and atomically assigns a job to exactly one worker", async () => {

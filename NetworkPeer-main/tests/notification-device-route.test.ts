@@ -1,21 +1,31 @@
 import Fastify from "fastify";
+import cookie from "@fastify/cookie";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { issueTestCognitoAccessToken, resetTestCognitoVerifier } from "../src/testing/cognito-test-verifier.js";
+import { config } from "../src/config.js";
 
-const getUserById = vi.hoisted(() => vi.fn());
+const getUserByCognitoSub = vi.hoisted(() => vi.fn());
 const deactivateDevicePushTokenForUser = vi.hoisted(() => vi.fn());
 
 vi.mock("../src/repository.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/repository.js")>();
-  return { ...actual, getUserById, deactivateDevicePushTokenForUser };
+  return { ...actual, getUserByCognitoSub, deactivateDevicePushTokenForUser };
 });
 
-import { signAccessToken } from "../src/auth.js";
 import type { User } from "../src/contracts.js";
 import notificationRoutes from "../src/routes/notifications.js";
 
 const USER_ID = "00000000-0000-4000-8000-000000000021";
 const TOKEN = "fcm-device-token-that-is-long-enough";
 let app: ReturnType<typeof Fastify> | undefined;
+
+async function buildTestApp() {
+  const testApp = Fastify();
+  await testApp.register(cookie);
+  await testApp.register(notificationRoutes, { prefix: config.API_PREFIX });
+  await testApp.ready();
+  return testApp;
+}
 
 function activeUser(): User {
   return {
@@ -34,23 +44,22 @@ function activeUser(): User {
 }
 
 function bearer(): string {
-  return `Bearer ${signAccessToken({ id: USER_ID, role: "CLIENT", phone: "+15550000021" })}`;
+  return `Bearer ${issueTestCognitoAccessToken({ id: USER_ID, role: "CLIENT", phone: "+15550000021" })}`;
 }
 
 afterEach(async () => {
   await app?.close();
   app = undefined;
-  getUserById.mockReset();
+  getUserByCognitoSub.mockReset();
   deactivateDevicePushTokenForUser.mockReset();
+  resetTestCognitoVerifier();
 });
 
 describe("DELETE /notifications/devices", () => {
   it("deactivates only the authenticated caller's token", async () => {
-    getUserById.mockResolvedValue(activeUser());
+    getUserByCognitoSub.mockResolvedValue(activeUser());
     deactivateDevicePushTokenForUser.mockResolvedValue(true);
-    app = Fastify();
-    await app.register(notificationRoutes, { prefix: "/api/v1" });
-    await app.ready();
+    app = await buildTestApp();
 
     const response = await app.inject({
       method: "DELETE",
@@ -65,10 +74,8 @@ describe("DELETE /notifications/devices", () => {
   });
 
   it("rejects malformed deregistration bodies before calling the repository", async () => {
-    getUserById.mockResolvedValue(activeUser());
-    app = Fastify();
-    await app.register(notificationRoutes, { prefix: "/api/v1" });
-    await app.ready();
+    getUserByCognitoSub.mockResolvedValue(activeUser());
+    app = await buildTestApp();
 
     const response = await app.inject({
       method: "DELETE",

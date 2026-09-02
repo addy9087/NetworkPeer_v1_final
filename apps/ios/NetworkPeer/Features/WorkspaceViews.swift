@@ -10,6 +10,7 @@ struct LoginView: View {
     @State private var verificationCode = ""
     @State private var role = UserRole.client
     @State private var codeRequested = false
+    @State private var challengeId = ""
     @State private var message: String?
     @State private var error: String?
     @State private var isWorking = false
@@ -87,12 +88,16 @@ struct LoginView: View {
                 let session = try await api.verifyOTP(
                     phoneNumber: phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines),
                     code: verificationCode,
-                    role: role,
+                    challengeId: challengeId,
                 )
                 model.signedIn(session)
             } else {
-                let result = try await api.requestOTP(phoneNumber: phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines))
+                let result = try await api.requestOTP(
+                    phoneNumber: phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines),
+                    role: role,
+                )
                 codeRequested = true
+                challengeId = result.challengeId
                 // Do not surface a development OTP echoed by a backend response.
                 message = result.delivery.transport?.lowercased() == "sms"
                     ? "A verification code was sent to your phone."

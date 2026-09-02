@@ -1,5 +1,6 @@
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
+import cookie from "@fastify/cookie";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import { config } from "./config.js";
@@ -103,12 +104,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       // Non-browser clients do not send Origin. Browser origins must be explicit.
       callback(null, origin === undefined || allowedOrigins.has(origin));
     },
-    credentials: false,
+    credentials: true,
     methods: ["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Authorization", "Content-Type", "Idempotency-Key", "Stripe-Signature", "X-Request-Id"],
     exposedHeaders: ["Retry-After", "X-Request-Id"],
     maxAge: 86_400,
   });
+  await app.register(cookie);
   await app.register(rateLimit, {
     global: true,
     redis,

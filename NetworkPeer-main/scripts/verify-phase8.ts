@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { buildApp } from "../src/index.js";
 import { closeConnections, pool, redis } from "../src/db.js";
-import { signAccessToken } from "../src/auth.js";
+import { issueTestCognitoAccessToken, resetTestCognitoVerifier } from "../src/testing/cognito-test-verifier.js";
 import { config } from "../src/config.js";
 import { signPaymentWebhook } from "../src/services/payment-gateway-service.js";
 
-type SeedUser = { id: string; phone: string; role: "CLIENT" | "WORKER" };
+type SeedUser = { id: string; cognito_sub: string; phone: string; role: "CLIENT" | "WORKER" };
 
 function assert(condition: unknown, name: string): asserts condition {
   if (!condition) throw new Error(`Phase 8 assertion failed: ${name}`);
@@ -28,15 +28,15 @@ function webhookPayload(id: string, type: string, providerReference: string, ope
 async function createUsers(seed: string): Promise<{ client: SeedUser; worker: SeedUser }> {
   const clientPhone = `+1555${seed.slice(0, 7)}`.replace(/[^\d+]/g, "").slice(0, 15);
   const workerPhone = `+1666${seed.slice(0, 7)}`.replace(/[^\d+]/g, "").slice(0, 15);
-  const { rows } = await pool.query<SeedUser>(
-    `
-      INSERT INTO users (phone_number, full_name, role, is_active, is_verified)
-      VALUES ($1, 'Phase 8 Client', 'CLIENT', TRUE, TRUE),
-             ($2, 'Phase 8 Worker', 'WORKER', TRUE, TRUE)
-      RETURNING id, phone_number AS phone, role
-    `,
-    [clientPhone, workerPhone],
-  );
+const { rows } = await pool.query<SeedUser>(
+      `
+        INSERT INTO users (cognito_sub, phone_number, full_name, role, is_active, is_verified)
+        VALUES ($1, $2, 'Phase 8 Client', 'CLIENT', TRUE, TRUE),
+               ($3, $4, 'Phase 8 Worker', 'WORKER', TRUE, TRUE)
+        RETURNING id, cognito_sub, phone_number AS phone, role
+      `,
+      [`test-cognito:${randomUUID()}`, clientPhone, `test-cognito:${randomUUID()}`, workerPhone],
+    );
   const client = rows.find((row) => row.role === "CLIENT");
   const worker = rows.find((row) => row.role === "WORKER");
   if (!client || !worker) throw new Error("Could not seed Phase 8 users");
@@ -76,6 +76,7 @@ async function deleteSeedData(userIds: string[]): Promise<void> {
   } finally {
     client.release();
   }
+  resetTestCognitoVerifier();
 }
 
 async function main() {
@@ -86,8 +87,8 @@ async function main() {
   const seed = randomUUID().replaceAll("-", "");
   const users = await createUsers(seed);
   const userIds = [users.client.id, users.worker.id];
-  const clientToken = signAccessToken({ id: users.client.id, role: "CLIENT", phone: users.client.phone });
-  const workerToken = signAccessToken({ id: users.worker.id, role: "WORKER", phone: users.worker.phone });
+  const clientToken = issueTestCognitoAccessToken({ id: users.client.id, cognitoSub: users.client.cognito_sub, role: "CLIENT", phone: users.client.phone });
+  const workerToken = issueTestCognitoAccessToken({ id: users.worker.id, cognitoSub: users.worker.cognito_sub, role: "WORKER", phone: users.worker.phone });
   const app = await buildApp({ realtimeEnabled: false });
   const originalFeeBps = config.PLATFORM_FEE_BPS;
 

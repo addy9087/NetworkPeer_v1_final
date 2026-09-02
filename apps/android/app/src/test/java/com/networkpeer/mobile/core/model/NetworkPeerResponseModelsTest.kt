@@ -64,18 +64,22 @@ class NetworkPeerResponseModelsTest {
     }
 
     @Test
-    fun `otp delivery accepts a contract-valid object without transport`() {
+    fun `otp requests use the Cognito challenge wire format`() {
         val result = json.decodeFromString<OtpRequestResult>(
             """
             {
-              "expiresInSeconds": 600,
-              "otpLength": 6,
-              "delivery": {"to": "+15551234567"}
+              "challenge_id": "cognito-challenge",
+              "expires_in_seconds": 600,
+              "otp_length": 6,
+              "delivery": {"transport": "sms", "to": "+15551234567"}
             }
             """.trimIndent(),
         )
 
-        assertNull(result.delivery.transport)
+        assertEquals("cognito-challenge", result.challengeId)
+        assertEquals(600, result.expiresInSeconds)
+        assertEquals(6, result.otpLength)
+        assertEquals("sms", result.delivery.transport)
         assertEquals("+15551234567", result.delivery.to)
     }
 }

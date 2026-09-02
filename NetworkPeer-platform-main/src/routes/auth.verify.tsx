@@ -61,7 +61,7 @@ function VerifyOtpPage() {
     setStatus("loading");
     setError("");
     try {
-      const session = await api.verifyOtp(pending.phoneNumber, otp, pending.role);
+      const session = await api.verifyOtp(pending.phoneNumber, otp, pending.challengeId);
       window.sessionStorage.removeItem(PENDING_OTP_KEY);
       toast.success("Phone verified. Your session is ready.");
       await router.navigate({ to: session.user.role === "CLIENT" ? "/client" : "/worker" });
@@ -78,10 +78,10 @@ function VerifyOtpPage() {
     setStatus("resending");
     setError("");
     try {
-      const result = await api.requestOtp(pending.phoneNumber);
+      const result = await api.requestOtp(pending.phoneNumber, pending.role);
       setPending((current) => {
         if (!current) return current;
-        const next = { ...current, otpLength: result.otpLength };
+        const next = { ...current, challengeId: result.challenge_id, otpLength: result.otp_length };
         window.sessionStorage.setItem(PENDING_OTP_KEY, JSON.stringify(next));
         return next;
       });
@@ -138,12 +138,13 @@ function VerifyOtpPage() {
                 value={otp[index] ?? ""}
                 onChange={(event) => {
                   const next = event.target.value.replace(/\D/g, "").slice(-1);
-                  const values = otp.padEnd(6, " ").split("");
+                  const values = otp.padEnd(pending?.otpLength ?? 6, " ").split("");
                   values[index] = next;
                   const updated = values.join("").replace(/\s+$/g, "");
                   setOtp(updated);
                   setError("");
-                  if (next && index < 5) inputRefs.current[index + 1]?.focus();
+                  if (next && index < (pending?.otpLength ?? 6) - 1)
+                    inputRefs.current[index + 1]?.focus();
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Backspace" && !otp[index] && index > 0)

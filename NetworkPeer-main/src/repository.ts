@@ -1469,6 +1469,32 @@ export async function getUserById(id: string): Promise<User | null> {
   return rows[0] ? mapUser(rows[0] as Row) : null;
 }
 
+/** Resolves the opaque Cognito subject to the internal marketplace identity. */
+export async function getUserByCognitoSub(cognitoSub: string): Promise<User | null> {
+  const { rows } = await pool.query<Row>(`SELECT * FROM users WHERE cognito_sub = $1`, [cognitoSub]);
+  return rows[0] ? mapUser(rows[0] as Row) : null;
+}
+
+/**
+ * Atomically binds a Cognito identity to an existing phone-based account or
+ * creates its first local marketplace record through a narrowly scoped DB API.
+ */
+export async function resolveCognitoUser(input: {
+  cognitoSub: string;
+  phone: string;
+  role: UserRole;
+}): Promise<User> {
+  const { rows } = await pool.query<Row>(
+    `SELECT resolve_cognito_user($1, $2, $3::user_role) AS id`,
+    [input.cognitoSub, input.phone, input.role],
+  );
+  const id = rows[0]?.["id"];
+  if (!id) throw new Error("Cognito user resolution did not return a user");
+  const user = await getUserById(String(id));
+  if (!user) throw new Error("Cognito user resolution returned an unreadable user");
+  return user;
+}
+
 export type WorkerJobProfile = {
   verificationStatus: string;
   preferredRadiusKm: number;
@@ -1532,35 +1558,6 @@ export async function updateWorkerLocation(
   const updatedAt = rows[0]?.["updated_at"];
   if (!updatedAt) throw new Error("Worker location was not updated");
   return new Date(updatedAt as string);
-}
-
-export async function createUser(input: {
-  phone: string;
-  role: Extract<UserRole, "CLIENT" | "WORKER">;
-  fullName?: string;
-}): Promise<User> {
-  const { rows } = await pool.query<Row>(
-    `SELECT register_otp_user($1, $2::user_role, $3) AS id`,
-    [input.phone, input.role, input.fullName ?? "Unnamed user"],
-  );
-  const id = rows[0]?.["id"];
-  if (!id) throw new Error("Public registration did not return a user");
-  const user = await getUserById(String(id));
-  if (!user) throw new Error("Public registration user could not be read");
-  return user;
-}
-
-export async function ensureWorkerProfile(userId: string): Promise<void> {
-  await pool.query(
-    `INSERT INTO worker_profiles (user_id, is_available)
-     VALUES ($1, FALSE)
-     ON CONFLICT (user_id) DO NOTHING`,
-    [userId],
-  );
-}
-
-export async function markUserVerified(userId: string): Promise<void> {
-  await pool.query(`UPDATE users SET is_verified = TRUE, updated_at = NOW() WHERE id = $1`, [userId]);
 }
 
 export async function recordLastLogin(userId: string): Promise<void> {

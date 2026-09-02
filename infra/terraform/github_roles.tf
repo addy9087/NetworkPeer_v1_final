@@ -71,6 +71,8 @@ data "aws_iam_policy_document" "github_actions_plan" {
       "cloudwatch:DescribeAlarms",
       "cloudwatch:GetDashboard",
       "cloudwatch:ListTagsForResource",
+      "cognito-idp:Describe*",
+      "cognito-idp:List*",
       "ec2:Describe*",
       "ecr:Describe*",
       "ecr:Get*",
@@ -87,6 +89,8 @@ data "aws_iam_policy_document" "github_actions_plan" {
       "iam:List*",
       "logs:DescribeLogGroups",
       "logs:ListTagsForResource",
+      "lambda:Get*",
+      "lambda:List*",
       "rds:Describe*",
       "rds:ListTagsForResource",
       "route53:Get*",
@@ -142,6 +146,34 @@ data "aws_iam_policy_document" "github_actions_apply" {
       "s3:PutBucketVersioning",
     ]
     resources = [aws_s3_bucket.evidence.arn]
+  }
+
+  statement {
+    sid    = "ManageCognitoCustomAuth"
+    effect = "Allow"
+    actions = [
+      "cognito-idp:CreateGroup",
+      "cognito-idp:CreateUserPool",
+      "cognito-idp:CreateUserPoolClient",
+      "cognito-idp:DeleteGroup",
+      "cognito-idp:DeleteUserPool",
+      "cognito-idp:DeleteUserPoolClient",
+      "cognito-idp:SetUserPoolMfaConfig",
+      "cognito-idp:TagResource",
+      "cognito-idp:UntagResource",
+      "cognito-idp:UpdateGroup",
+      "cognito-idp:UpdateUserPool",
+      "cognito-idp:UpdateUserPoolClient",
+      "lambda:AddPermission",
+      "lambda:CreateFunction",
+      "lambda:DeleteFunction",
+      "lambda:RemovePermission",
+      "lambda:TagResource",
+      "lambda:UntagResource",
+      "lambda:UpdateFunctionCode",
+      "lambda:UpdateFunctionConfiguration",
+    ]
+    resources = ["*"]
   }
 
   statement {
@@ -394,6 +426,7 @@ data "aws_iam_policy_document" "github_actions_apply" {
       values = [
         "backup.amazonaws.com",
         "ecs-tasks.amazonaws.com",
+        "lambda.amazonaws.com",
         "monitoring.rds.amazonaws.com",
         "vpc-flow-logs.amazonaws.com",
       ]

@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { authService } from "../services/auth-service.js";
-import { AuthError, verifyAccessToken } from "../auth.js";
+import { AuthError, type TokenPair } from "../auth.js";
 import { requireAuth } from "../middleware/auth.js";
 import { ok, fail } from "../contracts.js";
 import { parseBody } from "../utils/validation.js";
@@ -12,21 +12,77 @@ const phoneSchema = z
   .trim()
   .regex(/^\+[1-9]\d{1,14}$/, "Phone number must be in E.164 format, e.g. +1234567890");
 
+const transportSchema = z.enum(["browser", "native"]);
 const requestOtpSchema = z.object({
   phone_number: phoneSchema,
+  // The role is only used when creating a new public Cognito account. Cognito
+  // groups remain authoritative for every existing account and on verification.
+  role: z.enum(["CLIENT", "WORKER"]).optional(),
 }).strict();
 
 const verifyOtpSchema = z.object({
   phone_number: phoneSchema,
+  challenge_id: z.string().min(1).max(8_192),
   otp: z.string().regex(/^\d{4,8}$/, "OTP must be 4-8 digits"),
-  role: z.enum(["CLIENT", "WORKER"]).optional(),
+  transport: transportSchema.default("native"),
 }).strict();
 
 const refreshSchema = z.object({
-  refresh_token: z.string().min(1),
-}).strict();
+  refresh_token: z.string().min(1).optional(),
+}).strict().default({});
 
-const BEARER_TOKEN_RE = /^Bearer\s+(.+)$/i;
+const refreshCookieName = config.WEB_SESSION_COOKIE_NAME;
+
+function cookieOptions() {
+  const options = {
+    httpOnly: true,
+    maxAge: config.COGNITO_REFRESH_TTL_SECONDS,
+    path: `${config.API_PREFIX}/auth`,
+    sameSite: config.WEB_SESSION_COOKIE_SAME_SITE as "lax" | "none" | "strict",
+    secure: config.WEB_SESSION_COOKIE_SECURE === "true",
+  };
+  return config.WEB_SESSION_COOKIE_DOMAIN ? { ...options, domain: config.WEB_SESSION_COOKIE_DOMAIN } : options;
+}
+
+function allowedBrowserOrigins(): Set<string> {
+  return new Set(config.CORS_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean));
+}
+
+function requireAllowedBrowserOrigin(request: FastifyRequest): void {
+  const origin = request.headers.origin;
+  if (!origin) {
+    if (config.NODE_ENV === "production") {
+      throw new AuthError("CSRF_ORIGIN_REQUIRED", "Browser authentication requests must include an Origin header", 403);
+    }
+    return;
+  }
+  if (!allowedBrowserOrigins().has(origin)) {
+    throw new AuthError("CSRF_ORIGIN_INVALID", "Browser authentication request origin is not allowed", 403);
+  }
+}
+
+function browserTokenResponse(tokens: TokenPair) {
+  return {
+    access_token: tokens.access_token,
+    expires_in: tokens.expires_in,
+    user: tokens.user,
+  };
+}
+
+function refreshTokenFromRequest(
+  request: FastifyRequest,
+  body: { refresh_token?: string },
+): { token: string; browser: boolean } {
+  const cookieToken = request.cookies[refreshCookieName];
+  if (cookieToken) {
+    requireAllowedBrowserOrigin(request);
+    return { token: cookieToken, browser: true };
+  }
+  if (!body.refresh_token) {
+    throw new AuthError("REFRESH_TOKEN_MISSING", "A refresh token is required", 400);
+  }
+  return { token: body.refresh_token, browser: false };
+}
 
 export default async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post("/auth/otp/request", async (request, reply) => {
@@ -35,7 +91,10 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send(fail("VALIDATION_ERROR", body.message));
     }
     try {
-      const result = await authService.requestOtp(body.value.phone_number);
+      const result = await authService.requestOtp({
+        phone: body.value.phone_number,
+        role: body.value.role,
+      });
       return ok(result);
     } catch (err) {
       return handleAuthError(request, reply, err);
@@ -48,11 +107,16 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send(fail("VALIDATION_ERROR", body.message));
     }
     try {
+      if (body.value.transport === "browser") requireAllowedBrowserOrigin(request);
       const result = await authService.verifyOtpAndLogin({
         phone: body.value.phone_number,
         otp: body.value.otp,
-        role: body.value.role,
+        challengeId: body.value.challenge_id,
       });
+      if (body.value.transport === "browser") {
+        reply.setCookie(refreshCookieName, result.refresh_token, cookieOptions());
+        return ok(browserTokenResponse(result));
+      }
       return ok(result);
     } catch (err) {
       return handleAuthError(request, reply, err);
@@ -65,7 +129,12 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send(fail("VALIDATION_ERROR", body.message));
     }
     try {
-      const result = await authService.refresh(body.value.refresh_token);
+      const refresh = refreshTokenFromRequest(request, body.value);
+      const result = await authService.refresh(refresh.token);
+      if (refresh.browser) {
+        reply.setCookie(refreshCookieName, result.refresh_token, cookieOptions());
+        return ok(browserTokenResponse(result));
+      }
       return ok(result);
     } catch (err) {
       return handleAuthError(request, reply, err);
@@ -77,11 +146,17 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!body.ok) {
       return reply.code(400).send(fail("VALIDATION_ERROR", body.message));
     }
+    let browser = false;
     try {
-      await authService.logout(body.value.refresh_token, optionalAccessTokenSubject(request));
+      const refresh = refreshTokenFromRequest(request, body.value);
+      browser = refresh.browser;
+      await authService.logout(refresh.token);
       return ok({ logged_out: true });
     } catch (err) {
       return handleAuthError(request, reply, err);
+    } finally {
+      // Clear a stale browser credential even when Cognito already revoked it.
+      if (browser) reply.clearCookie(refreshCookieName, cookieOptions());
     }
   });
 
@@ -94,30 +169,10 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 }
 
-/**
- * A signed refresh token is sufficient authority to revoke its own family. A
- * still-valid bearer keeps the legacy caller/refresh-token subject binding,
- * while an expired bearer cannot prevent local logout from revoking a valid
- * server refresh session.
- */
-function optionalAccessTokenSubject(request: FastifyRequest): string | undefined {
-  const authorization = request.headers.authorization;
-  const token = authorization ? BEARER_TOKEN_RE.exec(authorization)?.[1] : undefined;
-  if (!token) return undefined;
-
-  try {
-    return verifyAccessToken(token).sub;
-  } catch {
-    return undefined;
-  }
-}
-
 function handleAuthError(request: FastifyRequest, reply: FastifyReply, err: unknown): unknown {
   if (err instanceof AuthError) {
     request.log.warn({ code: err.code }, "authentication request rejected");
-    if (err.statusCode === 429) {
-      reply.header("Retry-After", String(Math.ceil(config.OTP_RATE_LIMIT_WINDOW_MS / 1000)));
-    }
+    if (err.statusCode === 429) reply.header("Retry-After", "60");
     return reply.code(err.statusCode).send(fail(err.code, err.message));
   }
 

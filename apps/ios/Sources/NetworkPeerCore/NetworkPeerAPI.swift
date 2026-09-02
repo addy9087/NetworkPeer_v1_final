@@ -39,13 +39,13 @@ public actor NetworkPeerAPI {
         sessionStore.read()
     }
 
-    public func requestOTP(phoneNumber: String) async throws -> OTPRequestResult {
+    public func requestOTP(phoneNumber: String, role: UserRole) async throws -> OTPRequestResult {
         try validatePhoneNumber(phoneNumber)
-        return try await request(path: "auth/otp/request", method: "POST", body: try encode(OTPRequestBody(phoneNumber: phoneNumber)), requiresAuthentication: false)
+        return try await request(path: "auth/otp/request", method: "POST", body: try encode(OTPRequestBody(phoneNumber: phoneNumber, role: role)), requiresAuthentication: false)
     }
 
     @discardableResult
-    public func verifyOTP(phoneNumber: String, code: String, role: UserRole) async throws -> StoredSession {
+    public func verifyOTP(phoneNumber: String, code: String, challengeId: String) async throws -> StoredSession {
         try validatePhoneNumber(phoneNumber)
         guard !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw NetworkPeerAPIError.validation("Enter the verification code.")
@@ -53,7 +53,7 @@ public actor NetworkPeerAPI {
         let pair: TokenPair = try await request(
             path: "auth/otp/verify",
             method: "POST",
-            body: try encode(OTPVerifyBody(phoneNumber: phoneNumber, otp: code, role: role)),
+            body: try encode(OTPVerifyBody(phoneNumber: phoneNumber, otp: code, challengeId: challengeId)),
             requiresAuthentication: false,
         )
         let session = StoredSession(pair: pair)
@@ -667,16 +667,23 @@ public struct DeviceRegistration: Codable, Sendable {
 
 private struct OTPRequestBody: Encodable {
     let phoneNumber: String
-    enum CodingKeys: String, CodingKey { case phoneNumber = "phone_number" }
+    let role: UserRole
+    enum CodingKeys: String, CodingKey {
+        case phoneNumber = "phone_number"
+        case role
+    }
 }
 
 private struct OTPVerifyBody: Encodable {
     let phoneNumber: String
     let otp: String
-    let role: UserRole
+    let challengeId: String
+    let transport = "native"
     enum CodingKeys: String, CodingKey {
         case phoneNumber = "phone_number"
-        case otp, role
+        case otp
+        case challengeId = "challenge_id"
+        case transport
     }
 }
 

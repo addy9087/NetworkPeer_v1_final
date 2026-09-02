@@ -220,10 +220,19 @@ public struct OTPDelivery: Codable, Sendable {
 }
 
 public struct OTPRequestResult: Codable, Sendable {
+    public let challengeId: String
     public let expiresInSeconds: Int
     public let otpLength: Int
     public let delivery: OTPDelivery
     public let otp: String?
+
+    enum CodingKeys: String, CodingKey {
+        case challengeId = "challenge_id"
+        case expiresInSeconds = "expires_in_seconds"
+        case otpLength = "otp_length"
+        case delivery
+        case otp
+    }
 }
 
 public struct Job: Codable, Identifiable, Sendable {

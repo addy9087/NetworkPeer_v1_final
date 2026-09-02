@@ -13,9 +13,9 @@ resource "aws_vpc" "main" {
       condition = var.nat_gateway_mode != "none" || (
         var.enable_interface_vpc_endpoints &&
         var.enable_s3_gateway_endpoint &&
-        length(setsubtract(toset(["ecr.api", "ecr.dkr", "logs", "secretsmanager"]), var.interface_vpc_endpoint_services)) == 0
+        length(setsubtract(toset(["ecr.api", "ecr.dkr", "logs", "secretsmanager", "cognito-idp"]), var.interface_vpc_endpoint_services)) == 0
       )
-      error_message = "nat_gateway_mode=none requires S3 plus ECR API/DKR, Logs, and Secrets Manager VPC endpoints so private Fargate tasks can start."
+      error_message = "nat_gateway_mode=none requires S3 plus ECR API/DKR, Logs, Secrets Manager, and Cognito IDP VPC endpoints so private Fargate tasks can start and authenticate users."
     }
   }
 }

@@ -23,6 +23,16 @@ output "runtime_secret_arn" {
   value       = aws_secretsmanager_secret.runtime.arn
 }
 
+output "cognito_user_pool_id" {
+  description = "Cognito User Pool ID used by the API's Custom Auth broker."
+  value       = aws_cognito_user_pool.main.id
+}
+
+output "cognito_user_pool_client_id" {
+  description = "No-secret Cognito app client ID used by browser and native API authentication."
+  value       = aws_cognito_user_pool_client.api.id
+}
+
 output "migration_secret_arn" {
   description = "Populate only for the one-shot migration/provisioning task."
   value       = aws_secretsmanager_secret.migration.arn

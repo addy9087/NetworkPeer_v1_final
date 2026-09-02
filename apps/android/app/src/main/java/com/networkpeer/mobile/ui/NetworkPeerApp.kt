@@ -101,6 +101,7 @@ private fun AuthScreen(container: AppContainer) {
     var otp by rememberSaveable { mutableStateOf("") }
     var roleName by rememberSaveable { mutableStateOf(UserRole.CLIENT.name) }
     var otpRequested by rememberSaveable { mutableStateOf(false) }
+    var challengeId by rememberSaveable { mutableStateOf("") }
     var deliveryNote by rememberSaveable { mutableStateOf<String?>(null) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
@@ -110,13 +111,15 @@ private fun AuthScreen(container: AppContainer) {
     fun resetOtpRequest() {
         otpRequested = false
         otp = ""
+        challengeId = ""
         deliveryNote = null
         error = null
     }
 
     suspend fun requestCode() {
-        val result = container.authRepository.requestOtp(phone.trim())
+        val result = container.authRepository.requestOtp(phone.trim(), role)
         otpRequested = true
+        challengeId = result.challengeId
         otp = ""
         deliveryNote = if (result.delivery.transport?.equals("sms", ignoreCase = true) == true) {
             context.getString(R.string.otp_sent)
@@ -215,7 +218,7 @@ private fun AuthScreen(container: AppContainer) {
                                 error = null
                                 try {
                                     if (otpRequested) {
-                                        container.authRepository.verifyOtp(phone.trim(), otp.trim(), role)
+                                        container.authRepository.verifyOtp(phone.trim(), otp.trim(), challengeId)
                                     } else {
                                         requestCode()
                                     }

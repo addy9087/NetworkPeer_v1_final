@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest, onRequestHookHandler } from "fastify";
-import { verifyAccessToken, AuthError } from "../auth.js";
+import { verifyAccessToken, AuthError, roleFromCognitoGroups } from "../auth.js";
 import type { UserRole } from "../contracts.js";
-import { getUserById } from "../repository.js";
+import { getUserByCognitoSub } from "../repository.js";
 
 /**
  * Extend FastifyRequest with the authenticated principal, set by requireAuth.
@@ -37,9 +37,10 @@ export const requireAuth: onRequestHookHandler = async (request, reply) => {
   }
 
   try {
-    const claims = verifyAccessToken(token);
-    const user = await getUserById(claims.sub);
-    if (!user || !user.is_active || !user.is_verified) {
+    const claims = await verifyAccessToken(token);
+    const tokenRole = roleFromCognitoGroups(claims.groups);
+    const user = await getUserByCognitoSub(claims.sub);
+    if (!user || !user.is_active || !user.is_verified || user.role !== tokenRole) {
       return sendAuthError(reply, new AuthError("TOKEN_INVALID", "User is not authorized"));
     }
     request.auth = {

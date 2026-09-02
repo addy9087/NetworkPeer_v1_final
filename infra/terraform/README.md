@@ -4,7 +4,7 @@ This Terraform root provisions a cautious AWS target for the existing Fastify AP
 
 ## Resources
 
-- A dedicated two-AZ VPC with public ALB/NAT subnets, private ECS subnets, isolated RDS/Redis subnets, locked default security group, tightly scoped security groups, optional VPC flow logs, and VPC endpoints.
+- A dedicated two-AZ VPC with public ALB/NAT subnets, private ECS subnets, isolated RDS/Redis subnets, locked default security group, tightly scoped security groups, optional VPC flow logs, and VPC endpoints including Cognito IDP.
 - Cost-selectable NAT: `none`, `single`, or `per_az`. Private Fargate tasks never receive public IPs.
 - S3 gateway and private interface endpoints for ECR, CloudWatch Logs, Secrets Manager, STS, and KMS when enabled.
 - An internet-facing ALB, IP target group, HTTP-to-HTTPS redirect only, HTTPS/TLS policy, WebSocket-compatible HTTP/1 target handling, optional ACM/Route53 automation, and optional regional WAF.
@@ -13,6 +13,7 @@ This Terraform root provisions a cautious AWS target for the existing Fastify AP
 - RDS PostgreSQL in isolated subnets with storage encryption, forced TLS, automated backups, an AWS-managed master credential, enhanced monitoring, CloudWatch PostgreSQL logs, and a PostGIS-ready engine.
 - ElastiCache Redis in isolated subnets with TLS required, at-rest encryption, AUTH, snapshots, slow/engine logs, and optional cross-AZ failover.
 - Empty Secrets Manager containers referenced by ECS task definitions, CloudWatch alarms/dashboard, and a separate AWS Backup RDS recovery-point policy.
+- A no-secret Cognito User Pool app client, `CLIENT`/`WORKER`/`ADMIN` groups, and a Custom Auth Lambda that delivers transactional OTPs through SNS.
 - Separate GitHub OIDC plan, apply, and ECR-publish roles. The publish role remains available through the legacy `github_actions_deploy_role_arn` output.
 
 The evidence bucket retains its existing compatibility setting: default server-side encryption is `AES256`, not KMS. Do not change client upload headers to require KMS encryption.
@@ -42,7 +43,7 @@ Use an AWS IAM Identity Center session or another short-lived human role locally
 
 `nat_gateway_mode` is a deliberate tradeoff:
 
-- `none` creates no NAT gateway. ECS can reach AWS services through the required endpoints and S3 gateway endpoint, but cannot call Stripe, Twilio, Firebase, Sentry, or other public HTTPS APIs.
+- `none` creates no NAT gateway. ECS can reach AWS services through the required endpoints and S3 gateway endpoint, including Cognito IDP, but cannot call Stripe, Firebase, Sentry, or other public HTTPS APIs.
 - `single` is the lower-cost starting point and creates one NAT gateway. It is an AZ dependency for outbound traffic.
 - `per_az` creates a NAT gateway in each AZ and is the production-resilience option.
 
@@ -75,11 +76,6 @@ DATABASE_ADMIN_URL
 DATABASE_MEDIA_VERIFIER_URL
 DATABASE_FINANCIAL_URL
 REDIS_URL
-JWT_SECRET
-JWT_REFRESH_SECRET
-TWILIO_ACCOUNT_SID
-TWILIO_AUTH_TOKEN
-TWILIO_FROM_NUMBER
 AWS_REGION
 AWS_S3_BUCKET
 STRIPE_SECRET_KEY
@@ -89,7 +85,6 @@ PAYMENT_WEBHOOK_SECRET
 FIREBASE_PROJECT_ID
 FIREBASE_CLIENT_EMAIL
 FIREBASE_PRIVATE_KEY
-CORS_ORIGINS
 SENTRY_DSN
 ```
 
@@ -103,11 +98,19 @@ NETWORKPEER_MEDIA_DB_PASSWORD
 NETWORKPEER_FINANCIAL_DB_PASSWORD
 ```
 
-The API and worker task definitions lock the non-secret production settings that `config.ts` requires: `SMS_PROVIDER=twilio`, `OTP_ECHO_IN_RESPONSE=false`, `PAYMENT_GATEWAY=stripe`, `PAYMENT_DISPATCH_ENABLED=true`, and JSON Pino logging (`LOG_PRETTY=false`, `LOG_LEVEL=info`). The API additionally receives the Terraform-derived restricted ALB `TRUST_PROXY_CIDRS` value. They inject the Stripe, Twilio, payment-webhook, database, Redis, JWT, S3, CORS, and optional Sentry/Firebase values above from the runtime secret. The API disables background queues while the worker enables them.
+The API and worker task definitions receive the Terraform-managed Cognito pool/client IDs, exact web CORS origins, and secure cross-site browser-cookie settings. They lock production payment, queue, and JSON logging settings (`PAYMENT_GATEWAY=stripe`, `PAYMENT_DISPATCH_ENABLED=true`, `LOG_PRETTY=false`, `LOG_LEVEL=info`). The API additionally receives the Terraform-derived restricted ALB `TRUST_PROXY_CIDRS` value. Runtime secrets contain database, Redis, S3, Stripe, payment-webhook, and optional Sentry/Firebase values. The API disables background queues while the worker enables them.
 
 RDS uses `manage_master_user_password = true`. AWS generates the master password and stores it in an AWS-managed secret; Terraform never receives that value. Do not put that high-privilege account in the runtime secret. Use it only to bootstrap least-privilege migration/application roles.
 
 Every PostgreSQL URL must use `sslmode=require` or a stronger certificate-verifying mode. The Redis URL must be `rediss://` and include the approved AUTH token. The ElastiCache API cannot consume a Secrets Manager ARN for `auth_token`, so `redis_auth_token` must be supplied only as a protected `TF_VAR_redis_auth_token` value. It is marked sensitive, but AWS requires it during create/update and Terraform therefore records it in encrypted state. This is the one AWS control-plane limitation to review with the security owner before deployment.
+
+## Cognito Custom Auth And SMS
+
+Terraform creates a User Pool that accepts accounts only through the API's `AdminCreateUser` broker, a no-secret app client with Custom Auth and refresh-token support, and exactly one role group per marketplace role. The API creates public `CLIENT` and `WORKER` accounts on OTP request; create an `ADMIN` Cognito user manually, add it to the `ADMIN` group, then bind its immutable `sub` with `NetworkPeer-main/scripts/provision-admin.sql`.
+
+The Custom Auth Lambda creates a fresh six-digit OTP for each authentication challenge and publishes it as transactional SNS SMS. Before a real test, request production SMS access if the AWS account is in the SNS SMS sandbox, verify any sandbox destination numbers, and configure a registered sender ID or origination number where the target country requires one. Terraform deliberately does not create an SNS spend limit, phone number, or sender registration because these require account- and country-specific approval.
+
+The app client intentionally has no client secret: browser and native clients authenticate through the API broker, and adding a client secret would require a `SECRET_HASH` on every broker request. The API task role is limited to the Cognito Admin actions used by that broker.
 
 ## Migration Order
 

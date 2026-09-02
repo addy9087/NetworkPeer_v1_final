@@ -1,14 +1,16 @@
 import Fastify from "fastify";
+import cookie from "@fastify/cookie";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { issueTestCognitoAccessToken, resetTestCognitoVerifier } from "../src/testing/cognito-test-verifier.js";
+import { config } from "../src/config.js";
 
-const getUserById = vi.hoisted(() => vi.fn());
+const getUserByCognitoSub = vi.hoisted(() => vi.fn());
 
 vi.mock("../src/repository.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/repository.js")>();
-  return { ...actual, getUserById };
+  return { ...actual, getUserByCognitoSub };
 });
 
-import { signAccessToken } from "../src/auth.js";
 import type { User, UserRole } from "../src/contracts.js";
 import clientJobsRoutes from "../src/routes/client-jobs.js";
 import type { ClientEvidenceReviewService } from "../src/services/client-evidence-review-service.js";
@@ -16,6 +18,17 @@ import type { ClientEvidenceReviewService } from "../src/services/client-evidenc
 const CLIENT_ID = "00000000-0000-4000-8000-000000000011";
 const JOB_ID = "00000000-0000-4000-8000-000000000012";
 let app: ReturnType<typeof Fastify> | undefined;
+
+async function buildTestApp(evidenceReviewService: ClientEvidenceReviewService) {
+  const testApp = Fastify();
+  await testApp.register(cookie);
+  await testApp.register(clientJobsRoutes, {
+    prefix: config.API_PREFIX,
+    evidenceReviewService,
+  });
+  await testApp.ready();
+  return testApp;
+}
 
 function activeUser(role: UserRole): User {
   return {
@@ -34,25 +47,21 @@ function activeUser(role: UserRole): User {
 }
 
 function bearer(role: UserRole): string {
-  return `Bearer ${signAccessToken({ id: CLIENT_ID, role, phone: "+15550000011" })}`;
+  return `Bearer ${issueTestCognitoAccessToken({ id: CLIENT_ID, role, phone: "+15550000011" })}`;
 }
 
 afterEach(async () => {
   await app?.close();
   app = undefined;
-  getUserById.mockReset();
+  getUserByCognitoSub.mockReset();
+  resetTestCognitoVerifier();
 });
 
 describe("GET /client/jobs/:jobId/evidence", () => {
   it("returns the review projection for an authenticated client and prevents response caching", async () => {
     const listForClient = vi.fn().mockResolvedValue({ evidence: [] });
-    getUserById.mockResolvedValue(activeUser("CLIENT"));
-    app = Fastify();
-    await app.register(clientJobsRoutes, {
-      prefix: "/api/v1",
-      evidenceReviewService: { listForClient } as unknown as ClientEvidenceReviewService,
-    });
-    await app.ready();
+    getUserByCognitoSub.mockResolvedValue(activeUser("CLIENT"));
+    app = await buildTestApp({ listForClient } as unknown as ClientEvidenceReviewService);
 
     const response = await app.inject({
       method: "GET",
@@ -68,13 +77,8 @@ describe("GET /client/jobs/:jobId/evidence", () => {
 
   it("rejects non-client roles before requesting evidence", async () => {
     const listForClient = vi.fn();
-    getUserById.mockResolvedValue(activeUser("WORKER"));
-    app = Fastify();
-    await app.register(clientJobsRoutes, {
-      prefix: "/api/v1",
-      evidenceReviewService: { listForClient } as unknown as ClientEvidenceReviewService,
-    });
-    await app.ready();
+    getUserByCognitoSub.mockResolvedValue(activeUser("WORKER"));
+    app = await buildTestApp({ listForClient } as unknown as ClientEvidenceReviewService);
 
     const response = await app.inject({
       method: "GET",

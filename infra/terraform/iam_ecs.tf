@@ -132,6 +132,25 @@ data "aws_iam_policy_document" "evidence_access" {
 data "aws_iam_policy_document" "api_task" {
   source_policy_documents = [data.aws_iam_policy_document.evidence_access.json]
 
+  statement {
+    sid    = "BrokerOnlyNetworkPeerCognitoAuth"
+    effect = "Allow"
+    actions = [
+      "cognito-idp:AdminAddUserToGroup",
+      "cognito-idp:AdminCreateUser",
+      "cognito-idp:AdminDisableUser",
+      "cognito-idp:AdminGetUser",
+      "cognito-idp:AdminInitiateAuth",
+      "cognito-idp:AdminListGroupsForUser",
+      "cognito-idp:AdminRespondToAuthChallenge",
+      "cognito-idp:AdminSetUserPassword",
+      "cognito-idp:AdminUpdateUserAttributes",
+      "cognito-idp:GetTokensFromRefreshToken",
+      "cognito-idp:RevokeToken",
+    ]
+    resources = [aws_cognito_user_pool.main.arn]
+  }
+
   dynamic "statement" {
     for_each = var.enable_ecs_exec ? [1] : []
 

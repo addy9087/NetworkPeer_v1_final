@@ -29,6 +29,7 @@ import com.networkpeer.mobile.core.model.WalletResponse
 import com.networkpeer.mobile.core.model.WorkStatusResult
 import com.networkpeer.mobile.core.model.WorkerJobDetail
 import com.networkpeer.mobile.core.model.WorkerSyncPage
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import retrofit2.Call
 import retrofit2.http.Body
@@ -165,13 +166,17 @@ interface TokenRefreshApi {
 }
 
 @Serializable
-data class OtpRequestBody(val phone_number: String)
+data class OtpRequestBody(
+    val phone_number: String,
+    val role: UserRole,
+)
 
 @Serializable
 data class OtpVerifyBody(
     val phone_number: String,
     val otp: String,
-    val role: UserRole,
+    @SerialName("challenge_id") val challengeId: String,
+    val transport: String = "native",
 )
 
 @Serializable

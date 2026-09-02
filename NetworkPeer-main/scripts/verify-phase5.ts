@@ -1,5 +1,6 @@
 import pg from "pg";
-import { signAccessToken } from "../src/auth.js";
+import { randomUUID } from "node:crypto";
+import { issueTestCognitoAccessToken, resetTestCognitoVerifier } from "../src/testing/cognito-test-verifier.js";
 import { config } from "../src/config.js";
 import { closeConnections } from "../src/db.js";
 import { buildApp } from "../src/index.js";
@@ -113,6 +114,7 @@ async function cleanup(): Promise<void> {
     [ids],
   );
   await client.query(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [ids]);
+  resetTestCognitoVerifier();
 }
 
 async function main(): Promise<void> {
@@ -123,16 +125,25 @@ async function main(): Promise<void> {
   try {
     await cleanup();
     await app.ready();
-    const created = await client.query<{ id: string; phone_number: string; role: "CLIENT" | "WORKER" }>(
+    const created = await client.query<{
+      id: string;
+      cognito_sub: string;
+      phone_number: string;
+      role: "CLIENT" | "WORKER";
+    }>(
       `
-        INSERT INTO users (phone_number, full_name, role, is_verified)
+        INSERT INTO users (cognito_sub, phone_number, full_name, role, is_verified)
         VALUES
-          ($1, 'Phase 5 Client', 'CLIENT', TRUE),
-          ($2, 'Phase 5 Worker A', 'WORKER', TRUE),
-          ($3, 'Phase 5 Worker B', 'WORKER', TRUE)
-        RETURNING id, phone_number, role
+          ($1, $2, 'Phase 5 Client', 'CLIENT', TRUE),
+          ($3, $4, 'Phase 5 Worker A', 'WORKER', TRUE),
+          ($5, $6, 'Phase 5 Worker B', 'WORKER', TRUE)
+        RETURNING id, cognito_sub, phone_number, role
       `,
-      [...SEED_PHONES],
+      [
+        `test-cognito:${randomUUID()}`, SEED_PHONES[0],
+        `test-cognito:${randomUUID()}`, SEED_PHONES[1],
+        `test-cognito:${randomUUID()}`, SEED_PHONES[2],
+      ],
     );
     const byPhone = new Map(created.rows.map((row) => [row.phone_number, row]));
     const clientUser = byPhone.get(SEED_PHONES[0]);
@@ -174,9 +185,9 @@ async function main(): Promise<void> {
 
     await client.query(`UPDATE jobs SET worker_id = $2, status = 'ASSIGNED' WHERE id = $1`, [jobId, workerA.id]);
 
-    const clientToken = signAccessToken({ id: clientUser.id, role: "CLIENT", phone: clientUser.phone_number });
-    const workerAToken = signAccessToken({ id: workerA.id, role: "WORKER", phone: workerA.phone_number });
-    const workerBToken = signAccessToken({ id: workerB.id, role: "WORKER", phone: workerB.phone_number });
+    const clientToken = issueTestCognitoAccessToken({ id: clientUser.id, cognitoSub: clientUser.cognito_sub, role: "CLIENT", phone: clientUser.phone_number });
+    const workerAToken = issueTestCognitoAccessToken({ id: workerA.id, cognitoSub: workerA.cognito_sub, role: "WORKER", phone: workerA.phone_number });
+    const workerBToken = issueTestCognitoAccessToken({ id: workerB.id, cognitoSub: workerB.cognito_sub, role: "WORKER", phone: workerB.phone_number });
     const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
     const checksum = "a".repeat(64);
     const capturedAt = new Date().toISOString();

@@ -1,5 +1,6 @@
 import pg from "pg";
-import { signAccessToken } from "../src/auth.js";
+import { randomUUID } from "node:crypto";
+import { issueTestCognitoAccessToken, resetTestCognitoVerifier } from "../src/testing/cognito-test-verifier.js";
 import { closeConnections } from "../src/db.js";
 import { buildApp } from "../src/index.js";
 import { config } from "../src/config.js";
@@ -30,7 +31,7 @@ async function cleanup(): Promise<void> {
     `SELECT id FROM users WHERE phone_number = ANY($1)`,
     [SEED_PHONES],
   );
-  const ids = result.rows.map((row) => row.id);
+  const ids = result.rows.map((row: { id: string }) => row.id);
   if (ids.length === 0) return;
   await client.query(`DELETE FROM admin_audit_log WHERE actor_user_id = ANY($1::uuid[])`, [ids]);
   await client.query(
@@ -38,6 +39,7 @@ async function cleanup(): Promise<void> {
     [ids],
   );
   await client.query(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [ids]);
+  resetTestCognitoVerifier();
 }
 
 function parseEnvelope(payload: string): ApiEnvelope {
@@ -52,18 +54,29 @@ async function main(): Promise<void> {
     await cleanup();
     await app.ready();
 
-    const created = await client.query<{ id: string; phone_number: string; role: "CLIENT" | "WORKER" }>(
+    const created = await client.query<{
+      id: string;
+      cognito_sub: string;
+      phone_number: string;
+      role: "CLIENT" | "WORKER" | "ADMIN";
+    }>(
       `
-        INSERT INTO users (phone_number, full_name, role, is_verified)
+        INSERT INTO users (cognito_sub, phone_number, full_name, role, is_verified)
         VALUES
-          ($1, 'Phase 4 Client', 'CLIENT', TRUE),
-          ($2, 'Verified Worker A', 'WORKER', TRUE),
-          ($3, 'Verified Worker B', 'WORKER', TRUE),
-          ($4, 'Pending Worker', 'WORKER', TRUE),
-          ($5, 'Phase 4 Admin', 'ADMIN', TRUE)
-        RETURNING id, phone_number, role
+          ($1, $2, 'Phase 4 Client', 'CLIENT', TRUE),
+          ($3, $4, 'Verified Worker A', 'WORKER', TRUE),
+          ($5, $6, 'Verified Worker B', 'WORKER', TRUE),
+          ($7, $8, 'Pending Worker', 'WORKER', TRUE),
+          ($9, $10, 'Phase 4 Admin', 'ADMIN', TRUE)
+        RETURNING id, cognito_sub, phone_number, role
       `,
-      [...SEED_PHONES],
+      [
+        `test-cognito:${randomUUID()}`, SEED_PHONES[0],
+        `test-cognito:${randomUUID()}`, SEED_PHONES[1],
+        `test-cognito:${randomUUID()}`, SEED_PHONES[2],
+        `test-cognito:${randomUUID()}`, SEED_PHONES[3],
+        `test-cognito:${randomUUID()}`, SEED_PHONES[4],
+      ],
     );
     const byPhone = new Map(created.rows.map((row) => [row.phone_number, row]));
     const clientUser = byPhone.get(SEED_PHONES[0]);
@@ -161,31 +174,11 @@ async function main(): Promise<void> {
       "nearby geography GiST index is valid and matches the discovery predicate",
     );
 
-    const clientToken = signAccessToken({
-      id: clientUser.id,
-      role: "CLIENT",
-      phone: clientUser.phone_number,
-    });
-    const workerAToken = signAccessToken({
-      id: workerA.id,
-      role: "WORKER",
-      phone: workerA.phone_number,
-    });
-    const workerBToken = signAccessToken({
-      id: workerB.id,
-      role: "WORKER",
-      phone: workerB.phone_number,
-    });
-    const pendingWorkerToken = signAccessToken({
-      id: pendingWorker.id,
-      role: "WORKER",
-      phone: pendingWorker.phone_number,
-    });
-    const adminToken = signAccessToken({
-      id: adminUser.id,
-      role: "ADMIN",
-      phone: adminUser.phone_number,
-    });
+    const clientToken = issueTestCognitoAccessToken({ id: clientUser.id, cognitoSub: clientUser.cognito_sub, role: "CLIENT", phone: clientUser.phone_number });
+    const workerAToken = issueTestCognitoAccessToken({ id: workerA.id, cognitoSub: workerA.cognito_sub, role: "WORKER", phone: workerA.phone_number });
+    const workerBToken = issueTestCognitoAccessToken({ id: workerB.id, cognitoSub: workerB.cognito_sub, role: "WORKER", phone: workerB.phone_number });
+    const pendingWorkerToken = issueTestCognitoAccessToken({ id: pendingWorker.id, cognitoSub: pendingWorker.cognito_sub, role: "WORKER", phone: pendingWorker.phone_number });
+    const adminToken = issueTestCognitoAccessToken({ id: adminUser.id, cognitoSub: adminUser.cognito_sub, role: "ADMIN", phone: adminUser.phone_number });
     const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
     // eslint-disable-next-line no-console

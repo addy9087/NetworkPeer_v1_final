@@ -18,6 +18,9 @@ PUBLIC="${1:-local}"
 
 API_URL="http://localhost:3000"
 FE_URL="http://localhost:8080"
+DEMO_CORS_ORIGINS="${CORS_ORIGINS:-http://localhost:8080,http://localhost:3001,http://localhost:5173}"
+DEMO_COOKIE_SAME_SITE="${WEB_SESSION_COOKIE_SAME_SITE:-lax}"
+DEMO_COOKIE_SECURE="${WEB_SESSION_COOKIE_SECURE:-false}"
 
 mkdir -p "$LOG_DIR"
 
@@ -28,6 +31,24 @@ die()   { printf "\033[1;31m[networkpeer]\033[0m %s\n" "$*" >&2; exit 1; }
 
 api_up()    { curl -sf -m 3 "$API_URL/api/v1/live" >/dev/null 2>&1; }
 front_up()  { curl -sf -m 3 -o /dev/null "$FE_URL/" >/dev/null 2>&1; }
+has_cognito_setting() {
+  local name="$1"
+  [ -n "${!name:-}" ] || {
+    [ -f "$BACKEND/.env" ] && grep -qE "^${name}=[^[:space:]#]+" "$BACKEND/.env"
+  }
+}
+start_api() {
+  (
+    cd "$BACKEND" && \
+      CORS_ORIGINS="$DEMO_CORS_ORIGINS" \
+      WEB_SESSION_COOKIE_SAME_SITE="$DEMO_COOKIE_SAME_SITE" \
+      WEB_SESSION_COOKIE_SECURE="$DEMO_COOKIE_SECURE" \
+      nohup node dist/index.js >"$LOG_DIR/api.log" 2>&1 &
+  )
+}
+
+has_cognito_setting COGNITO_USER_POOL_ID && has_cognito_setting COGNITO_CLIENT_ID || \
+  die "Cognito is required for the demo. Configure COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID in $BACKEND/.env, then attach the Custom Auth triggers."
 
 # ---------------------------------------------------------------------------
 info "Step 1/6  Infrastructure (PostGIS + Redis)"
@@ -46,17 +67,13 @@ ok "Migrations applied"
 # ---------------------------------------------------------------------------
 info "Step 3/6  API (port 3000)"
 # ---------------------------------------------------------------------------
-if api_up; then
-  ok "API already running ($API_URL)"
-elif pgrep -f "node dist/index.js" >/dev/null 2>&1; then
-  warn "API process exists but /live fails — restarting it"
+info "Building current API source..."
+(cd "$BACKEND" && npm run build >"$LOG_DIR/build.log" 2>&1) || die "build failed"
+if pgrep -f "node dist/index.js" >/dev/null 2>&1; then
+  warn "Restarting API with the current build"
   pkill -f "node dist/index.js"; sleep 2
-  (cd "$BACKEND" && npm run build >"$LOG_DIR/build.log" 2>&1) || die "build failed"
-  (cd "$BACKEND" && nohup node dist/index.js >"$LOG_DIR/api.log" 2>&1 &)
-else
-  (cd "$BACKEND" && npm run build >"$LOG_DIR/build.log" 2>&1) || die "build failed"
-  (cd "$BACKEND" && nohup node dist/index.js >"$LOG_DIR/api.log" 2>&1 &)
 fi
+start_api
 for i in $(seq 1 20); do api_up && break; sleep 1; done
 api_up || die "API did not become ready — see $LOG_DIR/api.log"
 
@@ -86,16 +103,17 @@ if [ "$PUBLIC" = "--public" ]; then
   done
   [ -z "$API_TUNNEL" ] || [ -z "$FE_TUNNEL" ] && die "Tunnels did not start — see $LOG_DIR/tunnel-*.log"
 
-  # Re-point the frontend at the API tunnel and add the FE tunnel to API CORS.
+  # Re-point the frontend at the API tunnel and restart the API with that exact
+  # frontend origin allowed for credentialed browser requests.
   info "Wiring frontend -> API tunnel, and API CORS -> frontend tunnel"
   pkill -f "vite dev" >/dev/null 2>&1 || true
   (cd "$FRONTEND" && VITE_API_BASE_URL="$API_TUNNEL/api/v1" VITE_API_PREFIX=/api/v1 nohup npm run dev >"$LOG_DIR/frontend.log" 2>&1 &)
-  if ! grep -q "$FE_TUNNEL" "$BACKEND/.env" 2>/dev/null; then
-    printf '\n# Added by start-demo.sh --public\nCORS_ORIGINS=http://localhost:8080,http://localhost:3001,http://localhost:5173,%s\n' "$FE_TUNNEL" >> "$BACKEND/.env"
-  fi
+  DEMO_CORS_ORIGINS="$DEMO_CORS_ORIGINS,$FE_TUNNEL"
+  DEMO_COOKIE_SAME_SITE="none"
+  DEMO_COOKIE_SECURE="true"
   pkill -f "node dist/index.js" >/dev/null 2>&1 || true
   sleep 2
-  (cd "$BACKEND" && nohup node dist/index.js >"$LOG_DIR/api.log" 2>&1 &)
+  start_api
   for i in $(seq 1 20); do curl -sf -m 3 "$API_TUNNEL/api/v1/live" >/dev/null 2>&1 && break; sleep 1; done
   curl -sf -m 10 "$API_TUNNEL/api/v1/live" >/dev/null || die "Public API not reachable through tunnel"
   for i in $(seq 1 30); do curl -sf -m 3 -o /dev/null "$FE_TUNNEL/" >/dev/null 2>&1 && break; sleep 1; done
@@ -117,7 +135,7 @@ cat <<EOF
 
 Next steps (one time, on this Mac):
   1. Open $FE_URL in a NORMAL window (client) and an INCOGNITO window (worker).
-  2. Sign up both roles — the OTP code is shown on the verify screen (dev mode).
+  2. Sign up both roles and enter the SMS code delivered by Cognito Custom Auth.
   3. Provision the admin:
        cd $BACKEND && docker exec networkpeer-postgis psql -U postgres -d networkpeer -f scripts/provision-admin.sql
   4. Verify the worker (use the phone numbers you signed up with):

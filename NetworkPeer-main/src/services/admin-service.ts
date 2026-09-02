@@ -1,7 +1,7 @@
-import { revokeAllRefreshTokenFamiliesForUser } from "../auth.js";
 import {
   adminOverrideJob,
   adminSuspendUser,
+  getUserById,
   getAdminAnalytics,
   listAdminAuditLog,
   listAdminUsers,
@@ -11,6 +11,7 @@ import {
   type WorkerVerificationStatus,
 } from "../repository.js";
 import type { JobStatus, UserRole } from "../contracts.js";
+import { authService } from "./auth-service.js";
 
 function databaseErrorCode(err: unknown): string | null {
   if (typeof err !== "object" || err === null || !("code" in err)) return null;
@@ -124,8 +125,12 @@ export class AdminService {
     } catch (err) {
       return mapDatabaseError(err);
     }
+    const user = await getUserById(input.userId);
+    if (!user) {
+      throw new AdminServiceError("NOT_FOUND", "The requested record was not found", 404);
+    }
     try {
-      await revokeAllRefreshTokenFamiliesForUser(input.userId);
+      await authService.disableCognitoUser(user.phone_number);
     } catch {
       throw new AdminServiceError(
         "AUTH_REVOCATION_UNAVAILABLE",

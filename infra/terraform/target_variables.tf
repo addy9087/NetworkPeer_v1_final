@@ -119,11 +119,80 @@ variable "interface_vpc_endpoint_services" {
     "secretsmanager",
     "sts",
     "kms",
+    "cognito-idp",
   ]
 
   validation {
     condition     = alltrue([for service in var.interface_vpc_endpoint_services : can(regex("^[a-z0-9.-]+$", service))])
     error_message = "Each interface endpoint service must use a valid AWS service suffix."
+  }
+}
+
+variable "cognito_challenge_ttl_minutes" {
+  description = "Cognito Custom Auth session lifetime in minutes. It must match the OTP delivery message and remain within Cognito's supported 3-15 minute range."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.cognito_challenge_ttl_minutes >= 3 && var.cognito_challenge_ttl_minutes <= 15 && floor(var.cognito_challenge_ttl_minutes) == var.cognito_challenge_ttl_minutes
+    error_message = "cognito_challenge_ttl_minutes must be a whole number from 3 through 15."
+  }
+}
+
+variable "cognito_max_attempts" {
+  description = "Maximum Custom Auth OTP attempts before Cognito rejects the authentication session."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.cognito_max_attempts >= 1 && var.cognito_max_attempts <= 10 && floor(var.cognito_max_attempts) == var.cognito_max_attempts
+    error_message = "cognito_max_attempts must be a whole number from 1 through 10."
+  }
+}
+
+variable "cognito_refresh_token_validity_days" {
+  description = "Cognito refresh-token and browser session lifetime in days. The API supports at most 30 days."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.cognito_refresh_token_validity_days >= 1 && var.cognito_refresh_token_validity_days <= 30 && floor(var.cognito_refresh_token_validity_days) == var.cognito_refresh_token_validity_days
+    error_message = "cognito_refresh_token_validity_days must be a whole number from 1 through 30."
+  }
+}
+
+variable "cognito_sms_sender_id" {
+  description = "Optional registered alphanumeric AWS SNS SMS sender ID. Leave null where sender IDs are unsupported."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.cognito_sms_sender_id == null || can(regex("^[A-Za-z0-9]{1,11}$", var.cognito_sms_sender_id))
+    error_message = "cognito_sms_sender_id must be null or 1-11 alphanumeric characters."
+  }
+}
+
+variable "cognito_sms_origination_number" {
+  description = "Optional registered AWS SNS E.164 origination number. Leave null to use the account's regional default."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.cognito_sms_origination_number == null || can(regex("^\\+[1-9][0-9]{1,14}$", var.cognito_sms_origination_number))
+    error_message = "cognito_sms_origination_number must be null or an E.164 phone number."
+  }
+}
+
+variable "cognito_sms_message_template" {
+  description = "Transactional OTP message for the Cognito Custom Auth Lambda. It must contain {code}; {minutes} is replaced with the configured session lifetime."
+  type        = string
+  default     = "Your NetworkPeer verification code is {code}. It expires in {minutes} minutes."
+
+  validation {
+    condition     = length(trimspace(var.cognito_sms_message_template)) > 0 && strcontains(var.cognito_sms_message_template, "{code}")
+    error_message = "cognito_sms_message_template must be non-empty and contain {code}."
   }
 }
 
@@ -360,13 +429,13 @@ variable "migration_container_command" {
 }
 
 variable "api_environment_variables" {
-  description = "Additional non-secret API environment variables. Task definitions enforce production payment, Twilio, OTP, queue, and JSON logging settings over any same-named values here."
+  description = "Additional non-secret API environment variables. Task definitions enforce Cognito, browser-cookie, payment, queue, and JSON logging settings over any same-named values here."
   type        = map(string)
   default     = {}
 }
 
 variable "worker_environment_variables" {
-  description = "Additional non-secret worker environment variables. Task definitions enforce production payment, Twilio, OTP, queue, and JSON logging settings over any same-named values here."
+  description = "Additional non-secret worker environment variables. Task definitions enforce Cognito, browser-cookie, payment, queue, and JSON logging settings over any same-named values here."
   type        = map(string)
   default     = {}
 }

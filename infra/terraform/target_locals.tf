@@ -58,11 +58,6 @@ locals {
     "DATABASE_MEDIA_VERIFIER_URL",
     "DATABASE_FINANCIAL_URL",
     "REDIS_URL",
-    "JWT_SECRET",
-    "JWT_REFRESH_SECRET",
-    "TWILIO_ACCOUNT_SID",
-    "TWILIO_AUTH_TOKEN",
-    "TWILIO_FROM_NUMBER",
     "AWS_REGION",
     "AWS_S3_BUCKET",
     "STRIPE_SECRET_KEY",
@@ -72,7 +67,6 @@ locals {
     "FIREBASE_PROJECT_ID",
     "FIREBASE_CLIENT_EMAIL",
     "FIREBASE_PRIVATE_KEY",
-    "CORS_ORIGINS",
     "SENTRY_DSN",
   ])
 
@@ -105,8 +99,14 @@ locals {
     PORT                              = tostring(var.api_container_port)
     API_PREFIX                        = "/api/v1"
     ALLOW_INSECURE_INTERNAL_TRANSPORT = "false"
-    SMS_PROVIDER                      = "twilio"
-    OTP_ECHO_IN_RESPONSE              = "false"
+    COGNITO_USER_POOL_ID              = aws_cognito_user_pool.main.id
+    COGNITO_CLIENT_ID                 = aws_cognito_user_pool_client.api.id
+    COGNITO_REGION                    = var.aws_region
+    COGNITO_CHALLENGE_TTL_SECONDS     = tostring(var.cognito_challenge_ttl_minutes * 60)
+    COGNITO_REFRESH_TTL_SECONDS       = tostring(var.cognito_refresh_token_validity_days * 86400)
+    CORS_ORIGINS                      = join(",", var.web_cors_origins)
+    WEB_SESSION_COOKIE_SAME_SITE      = "none"
+    WEB_SESSION_COOKIE_SECURE         = "true"
     PAYMENT_GATEWAY                   = "stripe"
     PAYMENT_DISPATCH_ENABLED          = "true"
     BACKGROUND_QUEUES_ENABLED         = "false"
@@ -120,8 +120,14 @@ locals {
     NODE_ENV                          = "production"
     API_PREFIX                        = "/api/v1"
     ALLOW_INSECURE_INTERNAL_TRANSPORT = "false"
-    SMS_PROVIDER                      = "twilio"
-    OTP_ECHO_IN_RESPONSE              = "false"
+    COGNITO_USER_POOL_ID              = aws_cognito_user_pool.main.id
+    COGNITO_CLIENT_ID                 = aws_cognito_user_pool_client.api.id
+    COGNITO_REGION                    = var.aws_region
+    COGNITO_CHALLENGE_TTL_SECONDS     = tostring(var.cognito_challenge_ttl_minutes * 60)
+    COGNITO_REFRESH_TTL_SECONDS       = tostring(var.cognito_refresh_token_validity_days * 86400)
+    CORS_ORIGINS                      = join(",", var.web_cors_origins)
+    WEB_SESSION_COOKIE_SAME_SITE      = "none"
+    WEB_SESSION_COOKIE_SECURE         = "true"
     PAYMENT_GATEWAY                   = "stripe"
     PAYMENT_DISPATCH_ENABLED          = "true"
     BACKGROUND_QUEUES_ENABLED         = "true"

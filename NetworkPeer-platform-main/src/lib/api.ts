@@ -13,7 +13,7 @@ type ApiEnvelope<T> = {
 
 type TokenPair = {
   access_token: string;
-  refresh_token: string;
+  refresh_token?: string; // optional for browser (HttpOnly cookie)
   expires_in: number;
   user: { id: string; role: AppRole; phone: string };
 };
@@ -213,8 +213,9 @@ export class ApiError extends Error {
 let refreshInFlight: Promise<AuthSession | null> | null = null;
 
 export type OtpRequestResult = {
-  expiresInSeconds: number;
-  otpLength: number;
+  challenge_id: string;
+  expires_in_seconds: number;
+  otp_length: number;
   delivery: { transport: "sms" | "log"; to?: string };
   otp?: string;
 };
@@ -267,7 +268,9 @@ async function refreshAccessToken(): Promise<AuthSession | null> {
       response = await fetch(endpoint("/auth/refresh"), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ refresh_token: sessionBeforeRefresh.refreshToken }),
+        // Browser: refresh token is in HttpOnly cookie, no body needed
+        body: JSON.stringify({}),
+        credentials: "include",
       });
     } catch {
       return null;
@@ -283,7 +286,7 @@ async function refreshAccessToken(): Promise<AuthSession | null> {
       if (
         error instanceof ApiError &&
         (error.statusCode === 401 || error.statusCode === 403) &&
-        current?.refreshToken === sessionBeforeRefresh.refreshToken
+        current?.accessToken === sessionBeforeRefresh.accessToken
       ) {
         authSession.clear();
       }
@@ -303,7 +306,11 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   if (current?.accessToken) headers.set("authorization", `Bearer ${current.accessToken}`);
   let response: Response;
   try {
-    response = await fetch(endpoint(path), { ...init, headers });
+    response = await fetch(endpoint(path), {
+      ...init,
+      headers,
+      credentials: init.credentials ?? "include",
+    });
   } catch {
     throw new ApiError(
       "NETWORK_ERROR",
@@ -311,7 +318,7 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
       0,
     );
   }
-  if (response.status === 401 && retry && current?.refreshToken) {
+  if (response.status === 401 && retry && current) {
     const refreshed = await refreshAccessToken();
     if (refreshed) return request<T>(path, init, false);
   }
@@ -319,20 +326,24 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
 }
 
 export const api = {
-  async requestOtp(phoneNumber: string): Promise<OtpRequestResult> {
+  async requestOtp(
+    phoneNumber: string,
+    role: Exclude<AppRole, "ADMIN">,
+  ): Promise<OtpRequestResult> {
     return request("/auth/otp/request", {
       method: "POST",
-      body: JSON.stringify({ phone_number: phoneNumber }),
+      body: JSON.stringify({ phone_number: phoneNumber, role }),
     });
   },
-  async verifyOtp(
-    phoneNumber: string,
-    otp: string,
-    role: Exclude<AppRole, "ADMIN">,
-  ): Promise<AuthSession> {
+  async verifyOtp(phoneNumber: string, otp: string, challengeId: string): Promise<AuthSession> {
     const pair = await request<TokenPair>("/auth/otp/verify", {
       method: "POST",
-      body: JSON.stringify({ phone_number: phoneNumber, otp, role }),
+      body: JSON.stringify({
+        phone_number: phoneNumber,
+        challenge_id: challengeId,
+        otp,
+        transport: "browser",
+      }),
     });
     const session = sessionFromTokenPair(pair);
     authSession.set(session);
@@ -342,9 +353,10 @@ export const api = {
     const current = authSession.get();
     if (!current) return;
     try {
+      // Browser: refresh token is in HttpOnly cookie, no body needed
       await request("/auth/logout", {
         method: "POST",
-        body: JSON.stringify({ refresh_token: current.refreshToken }),
+        body: JSON.stringify({}),
       });
     } finally {
       authSession.clear();

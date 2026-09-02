@@ -4,7 +4,8 @@ export type AppRole = "CLIENT" | "WORKER" | "ADMIN";
 
 export type AuthSession = {
   accessToken: string;
-  refreshToken: string;
+  // Browser refresh tokens are held only in an HttpOnly cookie.
+  refreshToken?: string;
   expiresIn: number;
   user: {
     id: string;
@@ -30,8 +31,7 @@ function readSession(): AuthSession | null {
   }
   try {
     const parsed = JSON.parse(stored) as AuthSession;
-    if (!parsed.accessToken || !parsed.refreshToken || !parsed.user?.id)
-      throw new Error("Invalid session");
+    if (!parsed.accessToken || !parsed.user?.id) throw new Error("Invalid session");
     snapshot = parsed;
   } catch {
     storage()?.removeItem(STORAGE_KEY);

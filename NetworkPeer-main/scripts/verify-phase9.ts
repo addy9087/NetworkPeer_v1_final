@@ -1,7 +1,8 @@
 import pg from "pg";
+import { randomUUID } from "node:crypto";
 import { buildApp } from "../src/index.js";
 import { closeConnections, pool } from "../src/db.js";
-import { signAccessToken } from "../src/auth.js";
+import { issueTestCognitoAccessToken, resetTestCognitoVerifier } from "../src/testing/cognito-test-verifier.js";
 import { config } from "../src/config.js";
 import type {
   MediaDownloadTarget,
@@ -113,10 +114,11 @@ async function cleanup(): Promise<void> {
     `SELECT id FROM users WHERE phone_number = ANY($1)`,
     [SEED_PHONES],
   );
-  const ids = users.rows.map((row) => row.id);
+  const ids = users.rows.map((row: { id: string }) => row.id);
   if (ids.length === 0) return;
   await pool.query(`DELETE FROM jobs WHERE client_id = ANY($1::uuid[]) OR worker_id = ANY($1::uuid[])`, [ids]);
   await pool.query(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [ids]);
+  resetTestCognitoVerifier();
 }
 
 async function main(): Promise<void> {
@@ -134,14 +136,19 @@ async function main(): Promise<void> {
     // eslint-disable-next-line no-console
     console.log("\n== Phase 9 background queue verification ==");
 
-    const users = await client.query<{ id: string; phone_number: string; role: "CLIENT" | "WORKER" }>(
+    const users = await client.query<{
+      id: string;
+      cognito_sub: string;
+      phone_number: string;
+      role: "CLIENT" | "WORKER";
+    }>(
       `
-        INSERT INTO users (phone_number, full_name, role, is_active, is_verified)
-        VALUES ($1, 'Phase 9 Client', 'CLIENT', TRUE, TRUE),
-               ($2, 'Phase 9 Worker', 'WORKER', TRUE, TRUE)
-        RETURNING id, phone_number, role
+        INSERT INTO users (cognito_sub, phone_number, full_name, role, is_active, is_verified)
+        VALUES ($1, $2, 'Phase 9 Client', 'CLIENT', TRUE, TRUE),
+               ($3, $4, 'Phase 9 Worker', 'WORKER', TRUE, TRUE)
+        RETURNING id, cognito_sub, phone_number, role
       `,
-      [...SEED_PHONES],
+      [`test-cognito:${randomUUID()}`, SEED_PHONES[0], `test-cognito:${randomUUID()}`, SEED_PHONES[1]],
     );
     const clientUser = users.rows.find((row) => row.role === "CLIENT");
     const workerUser = users.rows.find((row) => row.role === "WORKER");
@@ -175,7 +182,7 @@ async function main(): Promise<void> {
     if (!subtaskId) throw new Error("Could not seed Phase 9 subtask");
     await client.query(`UPDATE jobs SET status = 'ASSIGNED', worker_id = $2 WHERE id = $1`, [jobId, workerUser.id]);
 
-    const workerToken = signAccessToken({ id: workerUser.id, role: "WORKER", phone: workerUser.phone_number });
+    const workerToken = issueTestCognitoAccessToken({ id: workerUser.id, cognitoSub: workerUser.cognito_sub, role: "WORKER", phone: workerUser.phone_number });
     for (const status of ["EN_ROUTE", "AT_LOCATION", "IN_PROGRESS"] as const) {
       const response = await app.inject({
         method: "POST",

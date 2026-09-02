@@ -1,6 +1,7 @@
 package com.networkpeer.mobile.core.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.JsonObject
 
 @Serializable
@@ -113,8 +114,9 @@ data class OtpDelivery(
 
 @Serializable
 data class OtpRequestResult(
-    val expiresInSeconds: Int,
-    val otpLength: Int,
+    @SerialName("challenge_id") val challengeId: String,
+    @SerialName("expires_in_seconds") val expiresInSeconds: Int,
+    @SerialName("otp_length") val otpLength: Int,
     val delivery: OtpDelivery,
     val otp: String? = null,
 )

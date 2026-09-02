@@ -51,12 +51,12 @@ class AuthRepository(
     private val onLogout: ((String) -> Unit)? = null,
     private val deregisterDevice: (suspend (String) -> Unit)? = null,
 ) {
-    suspend fun requestOtp(phoneNumber: String): OtpRequestResult = apiCall {
-        api.requestOtp(OtpRequestBody(phoneNumber))
+    suspend fun requestOtp(phoneNumber: String, role: UserRole): OtpRequestResult = apiCall {
+        api.requestOtp(OtpRequestBody(phoneNumber, role))
     }
 
-    suspend fun verifyOtp(phoneNumber: String, otp: String, role: UserRole): StoredSession {
-        val pair = apiCall { api.verifyOtp(OtpVerifyBody(phoneNumber, otp, role)) }
+    suspend fun verifyOtp(phoneNumber: String, otp: String, challengeId: String): StoredSession {
+        val pair = apiCall { api.verifyOtp(OtpVerifyBody(phoneNumber, otp, challengeId)) }
         return StoredSession.from(pair).also(client.sessionStore::save)
     }
 

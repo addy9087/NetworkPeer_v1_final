@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/tls"
       version = "~> 4.0"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
+    }
   }
 
   # Configure the remote backend with `terraform init -backend-config=backend.hcl`.

@@ -6,8 +6,6 @@ dotenv.config();
 
 const DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/networkpeer";
 const DEFAULT_REDIS_URL = "redis://localhost:6379";
-const DEFAULT_JWT_SECRET = "development-only-jwt-secret-please-change";
-const DEFAULT_JWT_REFRESH_SECRET = "development-only-refresh-secret-please-change";
 
 function isPlaceholderSecret(secret: string): boolean {
   const normalized = secret.toLowerCase();
@@ -88,30 +86,6 @@ const envSchema = z.object({
 
   REDIS_URL: z.string().url().default(DEFAULT_REDIS_URL),
 
-  JWT_SECRET: z.string().min(32).default(DEFAULT_JWT_SECRET),
-  JWT_REFRESH_SECRET: z.string().min(32).default(DEFAULT_JWT_REFRESH_SECRET),
-  JWT_ACCESS_TTL: z.string().default("15m"),
-  JWT_REFRESH_TTL: z.string().default("7d"),
-  JWT_ISSUER: z.string().default("networkpeer-api"),
-  JWT_AUDIENCE: z.string().default("networkpeer-mobile"),
-
-  OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
-  OTP_LENGTH: z.coerce.number().int().min(4).max(8).default(6),
-  OTP_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
-  OTP_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(3),
-  OTP_VERIFY_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(5),
-  OTP_MAX_VERIFY_ATTEMPTS: z.coerce.number().int().positive().default(5),
-  OTP_ECHO_IN_RESPONSE: z.enum(["true", "false"]).default("true"),
-  OTP_SMS_TEMPLATE: z
-    .string()
-    .default("Your NetworkPeer OTP is {{code}}. It expires in {{minutes}} minutes."),
-
-  SMS_PROVIDER: z.enum(["console", "twilio"]).default("console"),
-  TWILIO_ACCOUNT_SID: z.string().default(""),
-  TWILIO_AUTH_TOKEN: z.string().default(""),
-  TWILIO_FROM_NUMBER: z.string().default(""),
-  SMS_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30000).default(10000),
-
   AWS_REGION: z.string().default("us-east-1"),
   AWS_ACCESS_KEY_ID: z.string().default(""),
   AWS_SECRET_ACCESS_KEY: z.string().default(""),
@@ -141,7 +115,7 @@ const envSchema = z.object({
   BACKGROUND_MEDIA_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(2),
   BACKGROUND_PUSH_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(4),
 
-  CORS_ORIGINS: z.string().default("http://localhost:3001,http://localhost:5173"),
+  CORS_ORIGINS: z.string().default("http://localhost:8080,http://localhost:3001,http://localhost:5173"),
   TRUST_PROXY_CIDRS: z
     .string()
     .default("")
@@ -154,6 +128,21 @@ const envSchema = z.object({
   SENTRY_ENVIRONMENT: z.string().trim().max(64).default(""),
   SENTRY_RELEASE: z.string().trim().max(200).default(""),
   SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.1),
+
+  // Cognito is the only user-identity/token authority. The API brokers the
+  // Custom Auth challenge but never creates or signs user tokens itself.
+  COGNITO_USER_POOL_ID: z.string().trim().max(256).default(""),
+  COGNITO_CLIENT_ID: z.string().trim().max(256).default(""),
+  COGNITO_REGION: z.string().trim().min(1).max(64).default("us-east-1"),
+  COGNITO_CHALLENGE_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
+  COGNITO_REFRESH_TTL_SECONDS: z.coerce.number().int().min(60).max(2_592_000).default(604_800),
+
+  // Browser sessions use API-hosted HttpOnly cookies. Native clients use the
+  // normalized Cognito token pair in secure platform storage.
+  WEB_SESSION_COOKIE_DOMAIN: z.string().trim().max(253).default(""),
+  WEB_SESSION_COOKIE_NAME: z.string().trim().min(1).max(128).default("networkpeer_refresh"),
+  WEB_SESSION_COOKIE_SAME_SITE: z.enum(["lax", "none", "strict"]).default("lax"),
+  WEB_SESSION_COOKIE_SECURE: z.enum(["true", "false"]).default("false"),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(100),
@@ -168,14 +157,6 @@ const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["DATABASE_POOL_MIN"],
       message: "DATABASE_POOL_MIN cannot exceed DATABASE_POOL_MAX",
-    });
-  }
-
-  if (env.JWT_SECRET === env.JWT_REFRESH_SECRET) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["JWT_REFRESH_SECRET"],
-      message: "JWT_REFRESH_SECRET must differ from JWT_SECRET",
     });
   }
 
@@ -214,30 +195,12 @@ const envSchema = z.object({
     }
   }
 
-  if (env.SMS_PROVIDER === "twilio") {
-    for (const key of ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"] as const) {
-      if (!env[key]) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [key],
-          message: `${key} is required when SMS_PROVIDER=twilio`,
-        });
-      }
-    }
-    if (!/^\+[1-9]\d{1,14}$/.test(env.TWILIO_FROM_NUMBER)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["TWILIO_FROM_NUMBER"],
-        message: "TWILIO_FROM_NUMBER must be an E.164 phone number",
-      });
-    }
-    if (env.OTP_ECHO_IN_RESPONSE === "true") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["OTP_ECHO_IN_RESPONSE"],
-        message: "OTP_ECHO_IN_RESPONSE must be disabled when SMS_PROVIDER=twilio",
-      });
-    }
+  if (env.WEB_SESSION_COOKIE_SAME_SITE === "none" && env.WEB_SESSION_COOKIE_SECURE !== "true") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["WEB_SESSION_COOKIE_SECURE"],
+      message: "WEB_SESSION_COOKIE_SECURE must be true when WEB_SESSION_COOKIE_SAME_SITE=none",
+    });
   }
 
   if (env.NODE_ENV !== "production") return;
@@ -375,43 +338,20 @@ const envSchema = z.object({
     });
   }
 
-  if (
-    env.JWT_SECRET === DEFAULT_JWT_SECRET
-    || isPlaceholderSecret(env.JWT_SECRET)
-    || !hasProductionGradeSecret(env.JWT_SECRET)
-  ) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["JWT_SECRET"],
-      message: "Production JWT_SECRET must be a real secret, not a default placeholder",
-    });
+  for (const key of ["COGNITO_USER_POOL_ID", "COGNITO_CLIENT_ID"] as const) {
+    if (!env[key]) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `${key} is required in production when Cognito is the identity authority`,
+      });
+    }
   }
-
-  if (
-    env.JWT_REFRESH_SECRET === DEFAULT_JWT_REFRESH_SECRET ||
-    isPlaceholderSecret(env.JWT_REFRESH_SECRET) ||
-    !hasProductionGradeSecret(env.JWT_REFRESH_SECRET)
-  ) {
+  if (env.WEB_SESSION_COOKIE_SECURE !== "true") {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["JWT_REFRESH_SECRET"],
-      message: "Production JWT_REFRESH_SECRET must be a real secret, not a default placeholder",
-    });
-  }
-
-  if (env.SMS_PROVIDER === "console") {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["SMS_PROVIDER"],
-      message: "SMS_PROVIDER=console is not allowed in production because it logs OTPs",
-    });
-  }
-
-  if (env.OTP_ECHO_IN_RESPONSE === "true") {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["OTP_ECHO_IN_RESPONSE"],
-      message: "OTP_ECHO_IN_RESPONSE must be disabled in production",
+      path: ["WEB_SESSION_COOKIE_SECURE"],
+      message: "WEB_SESSION_COOKIE_SECURE must be true in production",
     });
   }
 
@@ -462,6 +402,9 @@ export const config = {
   DATABASE_ADMIN_URL: parsed.data.DATABASE_ADMIN_URL ?? parsed.data.DATABASE_URL,
   DATABASE_MEDIA_VERIFIER_URL: parsed.data.DATABASE_MEDIA_VERIFIER_URL ?? parsed.data.DATABASE_URL,
   DATABASE_FINANCIAL_URL: parsed.data.DATABASE_FINANCIAL_URL ?? parsed.data.DATABASE_URL,
+  COGNITO_ISSUER: parsed.data.COGNITO_USER_POOL_ID
+    ? `https://cognito-idp.${parsed.data.COGNITO_REGION}.amazonaws.com/${parsed.data.COGNITO_USER_POOL_ID}`
+    : "",
 };
 
 export type Config = typeof config;

@@ -25,18 +25,22 @@ struct ContractTests {
         #expect(envelope.data?.user.role == .worker)
     }
 
-    @Test("OTP delivery accepts an omitted optional transport")
-    func otpDeliveryAllowsOmittedTransport() throws {
+    @Test("OTP requests use the Cognito challenge wire format")
+    func otpRequestUsesCognitoChallengeWireFormat() throws {
         let data = Data("""
         {
-          "expiresInSeconds": 600,
-          "otpLength": 6,
-          "delivery": { "to": "+15551234567" }
+          "challenge_id": "cognito-challenge",
+          "expires_in_seconds": 600,
+          "otp_length": 6,
+          "delivery": { "transport": "sms", "to": "+15551234567" }
         }
         """.utf8)
 
         let result = try JSONDecoder().decode(OTPRequestResult.self, from: data)
-        #expect(result.delivery.transport == nil)
+        #expect(result.challengeId == "cognito-challenge")
+        #expect(result.expiresInSeconds == 600)
+        #expect(result.otpLength == 6)
+        #expect(result.delivery.transport == "sms")
         #expect(result.delivery.to == "+15551234567")
     }
 
