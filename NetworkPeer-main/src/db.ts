@@ -6,14 +6,19 @@ import { logger } from "./observability.js";
 const { Pool } = pg;
 
 function createPostgresPool(connectionString: string, name: string, min = config.DATABASE_POOL_MIN) {
-  const instance = new Pool({
+  const isDevOrStaging = config.NODE_ENV !== "production";
+  const poolConfig: pg.PoolConfig = {
     connectionString,
     min,
     max: config.DATABASE_POOL_MAX,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
     statement_timeout: 30000,
-  });
+  };
+  if (isDevOrStaging) {
+    poolConfig.ssl = { rejectUnauthorized: false };
+  }
+  const instance = new Pool(poolConfig);
   instance.on("error", (err) => {
     logger.error({ err, pool: name }, "unexpected PostgreSQL pool error");
   });
