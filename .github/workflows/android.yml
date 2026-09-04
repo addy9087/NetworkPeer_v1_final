@@ -31,7 +31,7 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v3
-      - name: Install Android 35 build prerequisites
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Android 36 build prerequisites
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Run development unit tests
         run: ./gradlew --no-daemon :app:testDevelopmentDebugUnitTest

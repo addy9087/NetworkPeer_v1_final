@@ -2,7 +2,7 @@
 """
 NetworkPeer Documentation PDF Builder
 Converts all markdown files in docs/ to styled PDFs using pandoc + weasyprint.
-Output: docs/pdfs/ mirroring the source structure.
+Output: docs/pdfs/ with one flat PDF folder.
 """
 
 import os
@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # Configuration
 DOCS_ROOT = Path(__file__).parent.parent / "docs"
 PDF_ROOT = DOCS_ROOT / "pdfs"
-EXCLUDE_DIRS = {"legacy", "pdfs", ".git", "node_modules"}
+EXCLUDE_DIRS = {"pdfs", ".git", "node_modules"}
 
 # CSS for professional styling
 PDF_CSS = """
@@ -167,11 +167,11 @@ def find_markdown_files():
 
 def convert_md_to_pdf(md_path: Path, rel_path: Path):
     """Convert single markdown file to PDF using pandoc + weasyprint."""
-    pdf_path = PDF_ROOT / rel_path.with_suffix(".pdf")
+    pdf_path = PDF_ROOT / rel_path.with_suffix(".pdf").name
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Write CSS to temp file
-    css_file = pdf_path.parent / "_style.css"
+    css_file = pdf_path.with_suffix(".css")
     css_file.write_text(PDF_CSS)
 
     try:
@@ -218,10 +218,11 @@ def main():
     if not check_dependencies():
         sys.exit(1)
 
-    # Clean and create output directory
-    if PDF_ROOT.exists():
-        shutil.rmtree(PDF_ROOT)
-    PDF_ROOT.mkdir(parents=True)
+    # Keep the output folder stable and remove only generated artifacts.
+    PDF_ROOT.mkdir(parents=True, exist_ok=True)
+    for generated in PDF_ROOT.glob("*"):
+        if generated.is_file() and generated.suffix in {".pdf", ".html", ".css"}:
+            generated.unlink()
 
     # Find markdown files
     md_files = find_markdown_files()
