@@ -11,6 +11,7 @@ on:
       - "NetworkPeer-main/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
+    branches: [main]
 
 permissions:
   contents: read

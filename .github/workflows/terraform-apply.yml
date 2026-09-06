@@ -2,6 +2,7 @@ name: Terraform Parked Apply
 
 on:
   workflow_dispatch:
+    branches: [main]
     inputs:
       target_environment:
         description: "Protected GitHub Environment matching Terraform github_environment; this workflow never activates ECS services"

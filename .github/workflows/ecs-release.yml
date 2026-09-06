@@ -2,6 +2,7 @@ name: ECS Release
 
 on:
   workflow_dispatch:
+    branches: [main]
     inputs:
       target_environment:
         description: "Protected GitHub Environment matching Terraform github_environment"
