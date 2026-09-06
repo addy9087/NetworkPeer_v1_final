@@ -210,7 +210,128 @@ Navigate through the 6-step wizard:
 
 ---
 
-## 4. Troubleshooting
+## 4. Testing on Your Mac M1 (Android + iOS)
+
+### Test the Android App on Mac M1
+
+**Prerequisites installed:**
+- Java 17 (OpenJDK via Homebrew)
+- Android SDK (platforms;android-36, build-tools;35.0.0, platform-tools)
+
+**Build the APK:**
+```bash
+export JAVA_HOME="/opt/homebrew/Cellar/openjdk@17/17.0.20.1/libexec/openjdk.jdk/Contents/Home"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+
+cd apps/android
+./gradlew assembleDevelopmentDebug --no-daemon
+
+# APK output:
+# app/build/outputs/apk/development/debug/app-development-debug.apk (33MB)
+```
+
+**Test on a Physical Android Phone:**
+```bash
+# 1. Enable USB Debugging on your phone:
+#    Settings → About Phone → Tap "Build Number" 7 times
+#    Settings → Developer Options → Enable "USB Debugging"
+
+# 2. Connect phone via USB cable
+
+# 3. Verify connection:
+adb devices
+# Should show: XXXXXXXX    device
+
+# 4. Install the APK:
+adb install -r apps/android/app/build/outputs/apk/development/debug/app-development-debug.apk
+
+# 5. Launch the app:
+adb shell monkey -p com.networkpeer.mobile.dev -c android.intent.category.LAUNCHER 1
+
+# 6. (Optional) Mirror phone to Mac screen:
+brew install scrcpy
+scrcpy --stay-awake --turn-screen-on
+```
+
+**Test on Android Emulator (no physical phone needed):**
+```bash
+# 1. Install Android Studio:
+brew install --cask android-studio
+
+# 2. Open Android Studio → More Actions → Virtual Device Manager
+# 3. Create device: Pixel 7 → API 36 (arm64-v8a) → Finish
+# 4. Start the emulator
+
+# 5. Install APK:
+adb install -r apps/android/app/build/outputs/apk/development/debug/app-development-debug.apk
+
+# 6. Launch:
+adb shell monkey -p com.networkpeer.mobile.dev -c android.intent.category.LAUNCHER 1
+```
+
+### Test the iOS App on Mac M1
+
+**Prerequisites:**
+- Xcode 15+ (install from App Store or `xcode-select --install`)
+- CocoaPods (`sudo gem install cocoapods`)
+
+**Build and run on Mac:**
+```bash
+cd apps/ios
+
+# Install dependencies (if using CocoaPods)
+pod install
+
+# Open in Xcode
+open NetworkPeer.xcworkspace
+
+# In Xcode:
+# 1. Select "My Mac (Designed for iPad)" as the run destination
+# 2. Press ⌘R to build and run
+# 3. The app will launch in a resizable window on your Mac
+```
+
+**Test on iPhone (physical device):**
+```bash
+# 1. Connect iPhone via USB cable
+# 2. Trust the computer on your iPhone
+# 3. In Xcode: Window → Devices and Simulators → select your iPhone
+# 4. Select your iPhone as run destination
+# 5. Press ⌘R to build and deploy to iPhone
+# 6. On iPhone: Settings → General → VPN & Device Management → Trust your developer profile
+```
+
+**Quick iOS Test (Simulator only):**
+```bash
+cd apps/ios
+xcodebuild -scheme NetworkPeer -destination 'platform=iOS Simulator,name=iPhone 15' build
+# Then open the .app in Xcode's simulator
+```
+
+### API Configuration for Local Testing
+
+The Android app points to `https://network-peer-api-alpha.vercel.app/api/v1/` by default. To test against a local backend:
+
+```bash
+# 1. Start the backend locally:
+cd NetworkPeer-main
+npm install
+npm run dev  # Runs on http://localhost:3000
+
+# 2. Update Android config:
+# Edit apps/android/networkpeer.development.local.properties:
+# API_BASE_URL=http://10.0.2.2:3000/api/v1/
+# (10.0.2.2 is the Android emulator's alias for host machine)
+
+# 3. Rebuild and reinstall:
+cd apps/android
+./gradlew assembleDevelopmentDebug
+adb install -r app/build/outputs/apk/development/debug/app-development-debug.apk
+```
+
+---
+
+## 5. Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
