@@ -5,14 +5,21 @@ import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { colors, radii, spacing, typography } from "@/lib/theme";
 
-function toE164(raw: string): string {
+function sanitizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
-  if (!digits) return "";
-  return digits.startsWith("91") ? `+${digits}` : `+91${digits}`;
+  if (digits.startsWith("91") && digits.length === 12) {
+    return digits.slice(2);
+  }
+  return digits.slice(0, 10);
+}
+
+function toE164(raw: string): string {
+  const digits = sanitizePhone(raw);
+  return digits ? `+91${digits}` : "";
 }
 
 function isValidPhone(raw: string): boolean {
-  return raw.replace(/\D/g, "").length >= 10;
+  return sanitizePhone(raw).length === 10;
 }
 
 export default function LoginScreen() {
@@ -20,6 +27,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
+  const [challengeId, setChallengeId] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,13 +46,14 @@ export default function LoginScreen() {
   async function requestOtp() {
     const normalized = toE164(phone);
     if (!isValidPhone(phone)) {
-      setError("Enter a valid 10-digit phone number.");
+      setError("Enter a valid 10-digit Indian mobile number.");
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const result = await api.requestOtp(normalized);
+      const result = await api.requestOtp(normalized, "WORKER");
+      setChallengeId(result.challengeId);
       setOtpLength(result.otpLength);
       setDevOtp(result.otp ?? null);
       setOtpSent(true);
@@ -59,7 +68,7 @@ export default function LoginScreen() {
   async function verifyOtp() {
     const normalized = toE164(phone);
     if (!isValidPhone(phone)) {
-      setError("Enter a valid 10-digit phone number.");
+      setError("Enter a valid 10-digit Indian mobile number.");
       return;
     }
     if (otp.trim().length < 4) {
@@ -69,7 +78,7 @@ export default function LoginScreen() {
     setLoading(true);
     setError(null);
     try {
-      const outcome = await login(normalized, otp.trim());
+      const outcome = await login(normalized, otp.trim(), challengeId);
       try {
         await api.grantConsent("LOCATION");
         await api.grantConsent("EVIDENCE");
@@ -161,15 +170,21 @@ export default function LoginScreen() {
         </View>
 
         <Text style={styles.label}>Phone number</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="+91 98765 43210"
-          placeholderTextColor={colors.textMuted}
-          keyboardType="phone-pad"
-          autoCapitalize="none"
-          value={phone}
-          onChangeText={setPhone}
-        />
+        <View style={styles.phoneInputRow}>
+          <View style={styles.countryCodeBadge}>
+            <Text style={styles.countryCodeText}>+91</Text>
+          </View>
+          <TextInput
+            style={styles.phoneInput}
+            placeholder="98765 43210"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="phone-pad"
+            autoCapitalize="none"
+            maxLength={10}
+            value={phone}
+            onChangeText={(text) => setPhone(sanitizePhone(text))}
+          />
+        </View>
 
         {otpSent && (
           <>
@@ -226,6 +241,10 @@ const styles = StyleSheet.create({
   title: { ...typography.title },
   subtitle: { ...typography.body, marginTop: 4 },
   label: { fontSize: 13, fontWeight: "600", color: colors.text, marginBottom: 6 },
+  phoneInputRow: { flexDirection: "row", gap: 8, marginBottom: spacing.lg },
+  countryCodeBadge: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, backgroundColor: colors.surfaceMuted, paddingHorizontal: 14, justifyContent: "center", alignItems: "center" },
+  countryCodeText: { fontSize: 15, fontWeight: "700", color: colors.text },
+  phoneInput: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: 14, fontSize: 16, color: colors.text, backgroundColor: colors.surfaceMuted },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: 14, fontSize: 16, color: colors.text, marginBottom: spacing.lg, backgroundColor: colors.surfaceMuted },
   buttonPrimary: { backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: 15, alignItems: "center", ...{ shadowColor: colors.primary, shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 4 } },
   buttonDisabled: { opacity: 0.6 },

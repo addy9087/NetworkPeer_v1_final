@@ -10,8 +10,9 @@
 
 set -euo pipefail
 
-APP_DIR="/Users/rudraaxlakra/Documents/Networkpeer"
-SERVER_DIR="/Users/rudraaxlakra/Downloads/NetworkPeer-main/server"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$SCRIPT_DIR"
+SERVER_DIR="$(cd "$SCRIPT_DIR/../../NetworkPeer-main" 2>/dev/null && pwd || echo "$SCRIPT_DIR/../server")"
 API_PORT=8787
 EXPO_PORT=8081
 

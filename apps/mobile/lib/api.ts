@@ -205,22 +205,30 @@ async function requestJson<T>(path: string, method: string, body?: unknown): Pro
 }
 
 export const api = {
-  async requestOtp(phoneNumber: string): Promise<{
+  async requestOtp(phoneNumber: string, role?: "WORKER" | "CLIENT"): Promise<{
     expiresInSeconds: number;
     otpLength: number;
     otp?: string;
+    challengeId: string;
     delivery: { transport: "sms" | "log"; to?: string };
   }> {
+    const body: Record<string, unknown> = { phone_number: phoneNumber };
+    if (role) body.role = role;
+
     const response = await fetch(`${API_BASE_URL}/api/v1/auth/otp/request`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ phone_number: phoneNumber }),
+      body: JSON.stringify(body),
     });
     const payload = await parseEnvelope<{
-      expiresInSeconds: number;
-      otpLength: number;
+      expires_in_seconds?: number;
+      expiresInSeconds?: number;
+      otp_length?: number;
+      otpLength?: number;
       otp?: string;
-      delivery: { transport: "sms" | "log"; to?: string };
+      challenge_id?: string;
+      challengeId?: string;
+      delivery?: { transport: "sms" | "log"; to?: string };
     }>(response);
     if (!response.ok || !payload.success || !payload.data) {
       throw new ApiClientError(
@@ -229,14 +237,25 @@ export const api = {
         response.status,
       );
     }
-    return payload.data;
+    return {
+      expiresInSeconds: payload.data.expires_in_seconds ?? payload.data.expiresInSeconds ?? 300,
+      otpLength: payload.data.otp_length ?? payload.data.otpLength ?? 6,
+      otp: payload.data.otp,
+      challengeId: payload.data.challenge_id ?? payload.data.challengeId ?? "",
+      delivery: payload.data.delivery ?? { transport: "sms" },
+    };
   },
 
-  async verifyOtp(phoneNumber: string, otp: string): Promise<VerifyOtpResult> {
+  async verifyOtp(phoneNumber: string, otp: string, challengeId: string): Promise<VerifyOtpResult> {
     const response = await fetch(`${API_BASE_URL}/api/v1/auth/otp/verify`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ phone_number: phoneNumber, otp, role: "WORKER" }),
+      body: JSON.stringify({
+        phone_number: phoneNumber,
+        otp,
+        challenge_id: challengeId,
+        transport: "native",
+      }),
     });
     const payload = await parseEnvelope<TokenPair>(response);
     if (!response.ok || !payload.success || !payload.data) {

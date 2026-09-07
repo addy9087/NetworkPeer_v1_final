@@ -1,11 +1,15 @@
 import { randomInt, timingSafeEqual } from "node:crypto";
 import { PublishCommand, SNSClient } from "@aws-sdk/client-sns";
 
-const sns = new SNSClient({});
+const snsDefault = new SNSClient({});
+const snsMumbai = new SNSClient({ region: "ap-south-1" });
+
 const otpLength = Number(process.env.OTP_LENGTH ?? "6");
 const maxAttempts = Number(process.env.OTP_MAX_ATTEMPTS ?? "5");
 const ttlMinutes = Number(process.env.OTP_TTL_MINUTES ?? "5");
 const messageTemplate = process.env.OTP_MESSAGE_TEMPLATE ?? "Your NetworkPeer verification code is {code}.";
+const fast2SmsKey = process.env.FAST2SMS_API_KEY || process.env.FAST2SMS_KEY;
+const twoFactorKey = process.env.TWO_FACTOR_API_KEY || process.env.TWO_FACTOR_KEY;
 
 function isE164(value) {
   return typeof value === "string" && /^\+[1-9]\d{1,14}$/.test(value);
@@ -28,7 +32,33 @@ function otpMessage(otp) {
     .replaceAll("{minutes}", String(ttlMinutes));
 }
 
-async function sendOtp(phoneNumber, otp) {
+async function sendViaFast2SMS(phoneNumber, otp) {
+  const digits = phoneNumber.replace(/\D/g, "");
+  const tenDigits = digits.slice(-10);
+  console.log(`[FAST2SMS] Dispatching Quick OTP to ${tenDigits}...`);
+  const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(fast2SmsKey)}&route=otp&variables_values=${encodeURIComponent(otp)}&flash=0&numbers=${encodeURIComponent(tenDigits)}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { "cache-control": "no-cache" },
+  });
+  const data = await res.json();
+  console.log(`[FAST2SMS_RESULT] Status: ${res.status}`, JSON.stringify(data));
+  return data;
+}
+
+async function sendVia2Factor(phoneNumber, otp) {
+  const digits = phoneNumber.replace(/\D/g, "");
+  const tenDigits = digits.slice(-10);
+  console.log(`[2FACTOR] Dispatching OTP to ${tenDigits}...`);
+  const url = `https://2factor.in/API/V1/${encodeURIComponent(twoFactorKey)}/SMS/${encodeURIComponent(tenDigits)}/${encodeURIComponent(otp)}/AUTOGEN`;
+  const res = await fetch(url);
+  const data = await res.json();
+  console.log(`[2FACTOR_RESULT] Status: ${res.status}`, JSON.stringify(data));
+  return data;
+}
+
+async function sendViaSns(phoneNumber, otp) {
   const messageAttributes = {
     "AWS.SNS.SMS.SMSType": { DataType: "String", StringValue: "Transactional" },
   };
@@ -44,11 +74,53 @@ async function sendOtp(phoneNumber, otp) {
       StringValue: process.env.OTP_SNS_ORIGINATION_NUMBER,
     };
   }
-  await sns.send(new PublishCommand({
+
+  const isIndia = phoneNumber.startsWith("+91");
+  const useMumbai = isIndia && process.env.USE_SNS_MUMBAI === "true";
+  const client = useMumbai ? snsMumbai : snsDefault;
+  const region = useMumbai ? "ap-south-1" : (process.env.AWS_REGION || "eu-north-1");
+
+  console.log(`[AWS_SNS] Dispatching SMS via ${region} to ${phoneNumber}...`);
+  const result = await client.send(new PublishCommand({
     PhoneNumber: phoneNumber,
     Message: otpMessage(otp),
     MessageAttributes: messageAttributes,
   }));
+  console.log(`[AWS_SNS_RESULT] MessageId: ${result.MessageId}`);
+  return result;
+}
+
+async function sendOtp(phoneNumber, otp) {
+  // Always log OTP for instant CloudWatch visibility & developer testability
+  console.log(`[AUTH_OTP] Phone: ${phoneNumber} | Code: ${otp}`);
+
+  // Route 1: Fast2SMS Quick OTP Gateway (Pre-approved Indian DLT Route)
+  if (fast2SmsKey && phoneNumber.startsWith("+91")) {
+    try {
+      await sendViaFast2SMS(phoneNumber, otp);
+      return;
+    } catch (err) {
+      console.error("[FAST2SMS_ERROR] Fast2SMS delivery failed, trying fallback:", err?.message || err);
+    }
+  }
+
+  // Route 2: 2Factor Gateway
+  if (twoFactorKey && phoneNumber.startsWith("+91")) {
+    try {
+      await sendVia2Factor(phoneNumber, otp);
+      return;
+    } catch (err) {
+      console.error("[2FACTOR_ERROR] 2Factor delivery failed, trying fallback:", err?.message || err);
+    }
+  }
+
+  // Route 3: AWS SNS (eu-north-1 or ap-south-1)
+  try {
+    await sendViaSns(phoneNumber, otp);
+  } catch (err) {
+    console.error("[AWS_SNS_ERROR] SNS delivery failed:", err?.message || err);
+    // Intentionally catch to allow Cognito challenge creation to proceed.
+  }
 }
 
 function defineChallenge(event) {

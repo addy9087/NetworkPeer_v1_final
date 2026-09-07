@@ -5,6 +5,7 @@
   "workspaces": [
     "NetworkPeer-platform-main",
     "apps/web",
+    "apps/mobile",
     "packages/*"
   ],
   "scripts": {

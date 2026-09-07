@@ -5,7 +5,7 @@ import { api, clearSession, getStoredWorker, storeWorker } from "./api";
 type AuthState = {
   worker: WorkerSession | null;
   loading: boolean;
-  login: (phone: string, code: string) => Promise<{ worker: WorkerSession; isNewAccount: boolean }>;
+  login: (phone: string, code: string, challengeId: string) => Promise<{ worker: WorkerSession; isNewAccount: boolean }>;
   setWorkerName: (fullName: string) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -39,8 +39,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const login = useCallback(async (phone: string, code: string) => {
-    const result = await api.verifyOtp(phone, code);
+  const login = useCallback(async (phone: string, code: string, challengeId: string) => {
+    const result = await api.verifyOtp(phone, code, challengeId);
     const workerSession: WorkerSession = {
       id: result.session.user.id,
       role: "WORKER",
