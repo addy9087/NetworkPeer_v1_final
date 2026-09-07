@@ -44,6 +44,9 @@ async function sendViaFast2SMS(phoneNumber, otp) {
   });
   const data = await res.json();
   console.log(`[FAST2SMS_RESULT] Status: ${res.status}`, JSON.stringify(data));
+  if (!res.ok || data.return !== true) {
+    throw new Error(`Fast2SMS failed with status ${res.status}: ${data.message || JSON.stringify(data)}`);
+  }
   return data;
 }
 
@@ -55,6 +58,9 @@ async function sendVia2Factor(phoneNumber, otp) {
   const res = await fetch(url);
   const data = await res.json();
   console.log(`[2FACTOR_RESULT] Status: ${res.status}`, JSON.stringify(data));
+  if (!res.ok || data.Status !== "Success") {
+    throw new Error(`2Factor failed with status ${res.status}: ${data.Details || JSON.stringify(data)}`);
+  }
   return data;
 }
 
