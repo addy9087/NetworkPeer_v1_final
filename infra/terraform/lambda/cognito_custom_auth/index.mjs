@@ -35,9 +35,35 @@ function otpMessage(otp) {
 async function sendViaFast2SMS(phoneNumber, otp) {
   const digits = phoneNumber.replace(/\D/g, "");
   const tenDigits = digits.slice(-10);
-  console.log(`[FAST2SMS] Dispatching Quick OTP to ${tenDigits}...`);
-  const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(fast2SmsKey)}&route=otp&variables_values=${encodeURIComponent(otp)}&flash=0&numbers=${encodeURIComponent(tenDigits)}`;
+  console.log(`[FAST2SMS] Dispatching OTP to ${tenDigits}...`);
 
+  const otpId = process.env.FAST2SMS_OTP_ID;
+  if (otpId) {
+    // Fast2SMS Smart OTP Endpoint
+    const url = "https://www.fast2sms.com/dev/otp/send";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": fast2SmsKey,
+        "Content-Type": "application/json",
+        "accept": "application/json",
+      },
+      body: JSON.stringify({
+        otp_id: otpId,
+        mobile: tenDigits,
+        otp: otp,
+      }),
+    });
+    const data = await res.json();
+    console.log(`[FAST2SMS_SMART_OTP_RESULT] Status: ${res.status}`, JSON.stringify(data));
+    if (!res.ok || data.return !== true) {
+      throw new Error(`Fast2SMS Smart OTP failed with status ${res.status}: ${data.message || JSON.stringify(data)}`);
+    }
+    return data;
+  }
+
+  // Fallback: Bulk V2 Route
+  const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(fast2SmsKey)}&route=otp&variables_values=${encodeURIComponent(otp)}&flash=0&numbers=${encodeURIComponent(tenDigits)}`;
   const res = await fetch(url, {
     method: "GET",
     headers: { "cache-control": "no-cache" },

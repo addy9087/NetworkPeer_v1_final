@@ -41,7 +41,7 @@ aws logs tail /aws/lambda/networkpeer-staging-cognito-custom-auth --region eu-no
 ```
 Output:
 ```text
-INFO  [AUTH_OTP] Phone: +919971536158 | Code: 630090
+INFO  [AUTH_OTP] Phone: +919876543210 | Code: 630090
 ```
 Enter this 6-digit code on the Web or Mobile app to immediately authenticate.
 
@@ -52,7 +52,7 @@ Enter this 6-digit code on the Web or Mobile app to immediately authenticate.
 ### 3.1 Web Client Sign-In Flow
 1. Open [`https://networkpeer-platform.vercel.app/auth`](https://networkpeer-platform.vercel.app/auth).
 2. Notice the **+91 badge** is locked and non-editable.
-3. Enter your 10-digit phone number (e.g. `9971536158`).
+3. Enter your 10-digit phone number (e.g. `9876543210`).
 4. Click **Send Verification Code**.
 5. When the 6-digit input appears, enter the code received on your phone or read from CloudWatch.
 6. Click **Verify and Continue**. You are redirected into the Client Dashboard (`/client`).

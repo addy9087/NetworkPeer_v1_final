@@ -159,7 +159,7 @@ function AuthPage() {
                 inputMode="numeric"
                 autoComplete="tel"
                 maxLength={10}
-                placeholder="99715 36158"
+                placeholder="98765 43210"
                 value={phone}
                 onChange={(event) => setPhone(event.target.value.replace(/[^\d]/g, ""))}
                 className="h-12 w-full rounded-xl border border-border bg-card pl-10 pr-3 text-lg outline-none focus:ring-2 focus:ring-ring/40"
