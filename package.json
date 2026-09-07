@@ -7,8 +7,12 @@
     "packages/*"
   ],
   "scripts": {
+    "build": "NITRO_PRESET=vercel npm run build --workspace networkpeer-platform",
     "build:contracts": "npm run build --workspace @networkpeer/contracts",
     "build:web": "npm run build --workspace networkpeer-platform",
     "lint:web": "npm run lint --workspace networkpeer-platform"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
   }
 }
