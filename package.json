@@ -4,12 +4,14 @@
   "version": "0.1.0",
   "workspaces": [
     "NetworkPeer-platform-main",
+    "apps/web",
     "packages/*"
   ],
   "scripts": {
     "build": "NITRO_PRESET=vercel npm run build --workspace networkpeer-platform",
     "build:contracts": "npm run build --workspace @networkpeer/contracts",
     "build:web": "npm run build --workspace networkpeer-platform",
+    "build:apps:web": "NITRO_PRESET=vercel npm run build --workspace networkpeer-web",
     "lint:web": "npm run lint --workspace networkpeer-platform"
   },
   "devDependencies": {
