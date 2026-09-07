@@ -176,8 +176,6 @@ export default function LoginScreen() {
           </View>
           <TextInput
             style={styles.phoneInput}
-            placeholder="98765 43210"
-            placeholderTextColor={colors.textMuted}
             keyboardType="phone-pad"
             autoCapitalize="none"
             maxLength={10}
