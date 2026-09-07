@@ -25,8 +25,9 @@ function ClientLayout() {
     queryFn: api.notifications,
     enabled: Boolean(session),
   });
-  const unread =
-    notifications.data?.items.filter((notification) => notification.read_at === null).length ?? 0;
+  const unread = Array.isArray(notifications.data?.items)
+    ? notifications.data.items.filter((notification) => notification && notification.read_at === null).length
+    : 0;
   const nav = baseNav.map((item) =>
     item.to === "/client/notifications" && unread > 0 ? { ...item, badge: String(unread) } : item,
   );

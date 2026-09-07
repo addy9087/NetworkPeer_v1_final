@@ -58,7 +58,8 @@
       "expo-video",
       "expo-sqlite",
       "expo-secure-store",
-      "expo-asset"
+      "expo-asset",
+      "expo-status-bar"
     ]
   }
 }

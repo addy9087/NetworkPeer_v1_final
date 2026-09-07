@@ -597,5 +597,13 @@ export const api = {
 };
 
 export function realtimeBaseUrl(): string {
-  return new URL(apiBaseUrl).origin;
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  const base = resolveApiBaseUrl();
+  try {
+    return new URL(base).origin;
+  } catch {
+    return "http://networkpeer-staging-api-alb-969746120.eu-north-1.elb.amazonaws.com";
+  }
 }
