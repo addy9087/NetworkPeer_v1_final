@@ -5,9 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_CENTER: [number, number] = [12.9716, 77.5946]; // Bengaluru
-const TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+const TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const TILE_ATTR =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 type LeafletModule = typeof import("leaflet");
 type Marker = import("leaflet").Marker;
@@ -234,7 +234,7 @@ export function LocationPicker({
 
       <div
         ref={containerRef}
-        className="h-72 w-full overflow-hidden rounded-2xl border border-border bg-muted/40 shadow-soft"
+        className="h-72 w-full overflow-hidden rounded-2xl border border-border bg-muted/40 shadow-soft [&_.leaflet-tile]:invert [&_.leaflet-tile]:hue-rotate-180 [&_.leaflet-tile]:brightness-95 [&_.leaflet-tile]:contrast-90"
         aria-label="Interactive map — tap to set the job location"
       />
 

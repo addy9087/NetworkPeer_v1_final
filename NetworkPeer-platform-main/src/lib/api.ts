@@ -17,12 +17,20 @@ import {
   type WorkerCapacityMode,
 } from "@networkpeer/contracts";
 
-const apiBaseUrl = (
-  import.meta.env.VITE_API_BASE_URL ??
-  (import.meta.env.PROD
-    ? "http://networkpeer-staging-api-alb-969746120.eu-north-1.elb.amazonaws.com/api/v1"
-    : "http://localhost:3000/api/v1")
-).replace(/\/$/, "");
+function resolveApiBaseUrl(): string {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "");
+  }
+  if (typeof window !== "undefined" && (window.location.protocol === "https:" || import.meta.env.PROD)) {
+    return "/api/v1";
+  }
+  if (import.meta.env.PROD) {
+    return "http://networkpeer-staging-api-alb-969746120.eu-north-1.elb.amazonaws.com/api/v1";
+  }
+  return "http://localhost:3000/api/v1";
+}
+
+const apiBaseUrl = resolveApiBaseUrl();
 
 type ApiEnvelope<T> = {
   success: boolean;

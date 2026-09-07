@@ -3,5 +3,11 @@
   "framework": "tanstack-start",
   "installCommand": "npm ci --include=dev",
   "buildCommand": "NITRO_PRESET=vercel npm run build",
-  "outputDirectory": "NetworkPeer-platform-main/.vercel/output"
+  "outputDirectory": "NetworkPeer-platform-main/.vercel/output",
+  "rewrites": [
+    {
+      "source": "/api/v1/:path*",
+      "destination": "http://networkpeer-staging-api-alb-969746120.eu-north-1.elb.amazonaws.com/api/v1/:path*"
+    }
+  ]
 }
