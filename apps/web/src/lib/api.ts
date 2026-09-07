@@ -17,20 +17,19 @@ import {
   type WorkerCapacityMode,
 } from "@networkpeer/contracts";
 
-function resolveApiBaseUrl(): string {
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "");
-  }
-  if (typeof window !== "undefined" && (window.location.protocol === "https:" || import.meta.env.PROD)) {
+export function resolveApiBaseUrl(): string {
+  // In any browser environment, unconditionally use relative /api/v1.
+  // This routes through the reverse proxy (Vercel rewrites or Vite dev proxy),
+  // completely eliminating Mixed Content (https -> http) and browser CORS errors.
+  if (typeof window !== "undefined") {
     return "/api/v1";
   }
-  if (import.meta.env.PROD) {
-    return "http://networkpeer-staging-api-alb-969746120.eu-north-1.elb.amazonaws.com/api/v1";
+  // Server-side rendering (Node.js / Nitro SSR)
+  if (process.env.VITE_API_BASE_URL && !process.env.VITE_API_BASE_URL.startsWith("/")) {
+    return process.env.VITE_API_BASE_URL.replace(/\/$/, "");
   }
-  return "http://localhost:3000/api/v1";
+  return "http://networkpeer-staging-api-alb-969746120.eu-north-1.elb.amazonaws.com/api/v1";
 }
-
-const apiBaseUrl = resolveApiBaseUrl();
 
 type ApiEnvelope<T> = {
   success: boolean;
@@ -275,7 +274,9 @@ export type OtpRequestResult = {
 };
 
 function endpoint(path: string): string {
-  return `${apiBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+  const base = resolveApiBaseUrl();
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${cleanPath}`;
 }
 
 function sessionFromTokenPair(pair: TokenPair): AuthSession {
@@ -359,13 +360,15 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
   if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
   if (current?.accessToken) headers.set("authorization", `Bearer ${current.accessToken}`);
   let response: Response;
+  const targetUrl = endpoint(path);
   try {
-    response = await fetch(endpoint(path), {
+    response = await fetch(targetUrl, {
       ...init,
       headers,
       credentials: init.credentials ?? "include",
     });
-  } catch {
+  } catch (fetchErr) {
+    console.error("[NetworkPeer API Error] Failed to fetch", targetUrl, fetchErr);
     throw new ApiError(
       "NETWORK_ERROR",
       "Cannot reach the API. Check your connection and try again.",
