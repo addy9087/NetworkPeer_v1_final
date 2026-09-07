@@ -35,6 +35,7 @@ export function LocationPicker({
   const mapRef = useRef<Map | null>(null);
   const markerRef = useRef<Marker | null>(null);
   const leafletRef = useRef<LeafletModule | null>(null);
+  const coordinatesRef = useRef({ lat, lng });
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
 
@@ -74,13 +75,18 @@ export function LocationPicker({
     void import("leaflet").then((L) => {
       if (disposed || !containerRef.current) return;
       leafletRef.current = L;
+      const currentCoordinates = coordinatesRef.current;
 
       const instance = L.map(containerRef.current, {
-        center: lat !== null && lng !== null ? [lat, lng] : DEFAULT_CENTER,
-        zoom: lat !== null && lng !== null ? 14 : 11,
+        center:
+          currentCoordinates.lat !== null && currentCoordinates.lng !== null
+            ? [currentCoordinates.lat, currentCoordinates.lng]
+            : DEFAULT_CENTER,
+        zoom: currentCoordinates.lat !== null && currentCoordinates.lng !== null ? 14 : 11,
         zoomControl: true,
       });
       map = instance;
+      mapRef.current = instance;
       L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 19 }).addTo(instance);
 
       instance.on("click", (event: { latlng: { lat: number; lng: number } }) => {
@@ -89,16 +95,33 @@ export function LocationPicker({
         onPickRef.current(nextLat, nextLng);
       });
 
-      if (lat !== null && lng !== null) {
-        syncMarker(L, instance, lat, lng);
+      if (currentCoordinates.lat !== null && currentCoordinates.lng !== null) {
+        syncMarker(L, instance, currentCoordinates.lat, currentCoordinates.lng);
       }
     });
 
     return () => {
       disposed = true;
       map?.remove();
+      mapRef.current = null;
       markerRef.current = null;
     };
+  }, [syncMarker]);
+
+  useEffect(() => {
+    coordinatesRef.current = { lat, lng };
+    const map = mapRef.current;
+    const L = leafletRef.current;
+    if (!map || !L) return;
+
+    if (lat === null || lng === null) {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      map.flyTo(DEFAULT_CENTER, 11, { duration: 0.6 });
+      return;
+    }
+
+    syncMarker(L, map, lat, lng);
   }, [lat, lng, syncMarker]);
 
   const runSearch = useCallback(async () => {

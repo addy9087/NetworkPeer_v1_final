@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-09-07 18:00 UTC: Final Source Restoration, Workflow Fixes & Push
+
+### Changes Made
+1. **GitHub Actions workflows** — Removed `runner.temp` from job-level `env` (moved to step via `$RUNNER_TEMP`), added `feature/**` push trigger, added `validate` gate jobs, fixed `workflow_dispatch` shape (removed unsupported `branches` key).
+2. **Root workspace** — Added root `package.json` with npm workspaces for `NetworkPeer-platform-main` and `packages/*`.
+3. **packages/contracts** — Replaced split-module plain TS with a single Zod-backed contract file exporting `jobStatusSchema`, `workerCapacityModeSchema`, `unitOfWorkKindSchema`, etc.
+4. **NetworkPeer-platform-main** — Restored the complete six-step Post-a-Job wizard (`client.jobs.new.tsx`), review page (`client.review.$jobId.tsx`), `SubmissionReviewPane`, and `api.ts` with shared contract imports.
+5. **Vercel config** — Added `NetworkPeer-platform-main/vercel.json` with workspace-aware `installCommand`/`buildCommand`.
+6. **Build verification** — `npm ci`, contracts build, platform typecheck, lint (8 pre-existing warnings), and Vercel-targeted production build all pass under Node 22.
+
+### Remaining Blockers
+- Vercel production branch ownership is unknown; deployment cannot be forced without that info.
+- Backend does not yet enforce worker-capacity, unit-of-work, or image/video-only policy — those are stored as metadata.
+
+---
+
 ## 2026-09-07: Emergency CI/CD Remediation & Multi-Platform Validation
 
 ### Summary
