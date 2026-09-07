@@ -50,23 +50,24 @@ function AuthPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [role, setRole] = useState<Role>("CLIENT");
   const [phone, setPhone] = useState("");
-  const [countryCode, setCountryCode] = useState("+1");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
-    const phoneNumber = toE164Phone(countryCode, phone);
-    if (!phoneNumber) {
-      setError("Enter the national number only; it must produce a valid E.164 phone number.");
+    const rawDigits = phone.trim().replace(/^(\+91|91)/, "").replace(/\D/g, "");
+    if (!rawDigits || rawDigits.length !== 10) {
+      setError("Please enter a valid 10-digit Indian mobile number.");
       return;
     }
+    const phoneNumber = `+91${rawDigits}`;
+    const displayPhone = `+91 ${rawDigits.slice(0, 5)} ${rawDigits.slice(5)}`;
     setSubmitting(true);
     setError("");
     try {
       const result = await api.requestOtp(phoneNumber, role);
       const pending: PendingOtp = {
         phoneNumber,
-        displayPhone: formatPhoneNumber(phone, countryCode),
+        displayPhone,
         role,
         challengeId: result.challenge_id,
         otpLength: result.otp_length,
@@ -146,43 +147,27 @@ function AuthPage() {
 
       <div className="mt-6 space-y-4">
         <label className="block">
-          <span className="mb-1.5 block text-base font-medium">Phone number</span>
+          <span className="mb-1.5 block text-base font-medium">Mobile number</span>
           <div className="flex gap-2">
-            <select
-              value={countryCode}
-              onChange={(event) => setCountryCode(event.target.value)}
-              className="h-12 w-24 appearance-none rounded-xl border border-border bg-card px-3 pr-7 text-base text-foreground outline-none focus:ring-2 focus:ring-ring/40"
-              style={{
-                WebkitAppearance: "none",
-                MozAppearance: "none",
-                appearance: "none",
-                backgroundColor: "hsl(var(--card))",
-                backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 0.5rem center",
-                backgroundSize: "1rem",
-              }}
-            >
-              <option value="+1">+1</option>
-              <option value="+44">+44</option>
-              <option value="+91">+91</option>
-            </select>
+            <div className="flex h-12 w-16 items-center justify-center rounded-xl border border-border bg-card px-3 text-base font-semibold text-foreground select-none">
+              +91
+            </div>
             <span className="relative flex-1">
               <Smartphone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="tel"
                 inputMode="numeric"
                 autoComplete="tel"
-                maxLength={15 - countryCode.length}
-                placeholder="555 000 1234"
+                maxLength={10}
+                placeholder="99715 36158"
                 value={phone}
-                onChange={(event) => setPhone(event.target.value.replace(/[^\d+]/g, ""))}
+                onChange={(event) => setPhone(event.target.value.replace(/[^\d]/g, ""))}
                 className="h-12 w-full rounded-xl border border-border bg-card pl-10 pr-3 text-lg outline-none focus:ring-2 focus:ring-ring/40"
               />
             </span>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Enter the national number only. {formatPhoneNumber(phone, countryCode)}
+            Enter your 10-digit Indian mobile number.
           </p>
         </label>
         {role === "WORKER" && mode === "register" ? (
