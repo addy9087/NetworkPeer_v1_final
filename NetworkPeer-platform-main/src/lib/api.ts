@@ -17,10 +17,12 @@ import {
   type WorkerCapacityMode,
 } from "@networkpeer/contracts";
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1").replace(
-  /\/$/,
-  "",
-);
+const apiBaseUrl = (
+  import.meta.env.VITE_API_BASE_URL ??
+  (import.meta.env.PROD
+    ? "http://networkpeer-staging-api-alb-969746120.eu-north-1.elb.amazonaws.com/api/v1"
+    : "http://localhost:3000/api/v1")
+).replace(/\/$/, "");
 
 type ApiEnvelope<T> = {
   success: boolean;

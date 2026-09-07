@@ -7,7 +7,7 @@ x-runtime-environment: &runtime-environment
   PORT: "3000"
   API_PREFIX: /api/v1
   # This exception is limited in config.ts to the private Docker hostnames
-  # below. Keep it false for Railway, Render, and other managed services.
+  # below. Keep it false for AWS and all production deployments.
   ALLOW_INSECURE_INTERNAL_TRANSPORT: "true"
   DATABASE_URL: postgresql://networkpeer_app:${NETWORKPEER_APP_DB_PASSWORD:?NETWORKPEER_APP_DB_PASSWORD must be set}@postgres:5432/networkpeer
   DATABASE_ADMIN_URL: postgresql://networkpeer_admin_api:${NETWORKPEER_ADMIN_DB_PASSWORD:?NETWORKPEER_ADMIN_DB_PASSWORD must be set}@postgres:5432/networkpeer
