@@ -1,87 +1,183 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
-import {
-  ArrowLeft,
-  Camera,
-  Check,
-  Clock3,
-  MapPin,
-  Mic,
-  Pause,
-  Play,
-  Star,
-  ThumbsDown,
-  Volume2,
-  X,
-} from "lucide-react";
+"use client";
 
-import { cn } from "@/lib/utils";
-import { PageHeader } from "@/components/shell/portal-shell";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { ArrowLeft, Check, FileImage, Loader2, ShieldCheck, ThumbsDown, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+
+import { SubmissionReviewPane } from "@/components/jobs/Review/SubmissionReviewPane";
 import {
   AnonymousBadge,
   Chip,
   SectionCard,
   SuccessCheck,
 } from "@/components/marketplace/primitives";
-import { evidence, jobById, type Job } from "@/lib/mock-data";
+import { PageHeader } from "@/components/shell/portal-shell";
+import { api, ApiError, type ClientEvidenceSummary, type Job } from "@/lib/api";
+import { cn, formatCurrency } from "@/lib/utils";
 
 export const Route = createFileRoute("/client/review/$jobId")({
-  loader: ({ params }): { job: Job } => ({ job: jobById(params.jobId) }),
-  head: ({ loaderData }) => ({
+  head: () => ({
     meta: [
-      { title: `Review evidence ${loaderData?.job.ref ?? ""} — NetworkPeers` },
+      { title: "Review evidence - NetworkPeers client" },
       {
         name: "description",
-        content:
-          "Inspect photo, video and audio evidence with GPS and timestamp badges, then approve, reject or rate the work.",
+        content: "Review submitted job evidence before approving payout or disputing the job.",
       },
-      { property: "og:title", content: "Review evidence — NetworkPeers" },
-      { property: "og:description", content: "Approve or reject verified on-site evidence." },
     ],
   }),
   component: ReviewPage,
 });
 
-const mediaIcon = { photo: Camera, video: Play, audio: Volume2 } as const;
+function errorMessage(error: unknown): string {
+  if (error instanceof ApiError) return `${error.code}: ${error.message}`;
+  return "Unable to load this evidence. Check your connection and try again.";
+}
 
 function ReviewPage() {
-  const { job } = Route.useLoaderData() as { job: Job };
-  const [activeId, setActiveId] = useState(evidence[0].id);
-  const [decision, setDecision] = useState<"none" | "approved" | "rejected">("none");
-  const [rating, setRating] = useState(5);
-  const [playing, setPlaying] = useState(false);
+  const { jobId } = Route.useParams();
+  const approvalKeyRef = useRef<string | null>(null);
+  const [job, setJob] = useState<Job | null>(null);
+  const [evidence, setEvidence] = useState<ClientEvidenceSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isDisputing, setIsDisputing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isReviewPaneOpen, setIsReviewPaneOpen] = useState(false);
 
-  const active = evidence.find((e) => e.id === activeId)!;
-  const ActiveIcon = mediaIcon[active.kind];
+  const loadReview = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const jobResult = await api.clientJob(jobId);
+      setJob(jobResult.job);
+      try {
+        const evidenceResult = await api.clientJobEvidence(jobId);
+        setEvidence(evidenceResult.evidence);
+        setError(null);
+      } catch (requestError) {
+        setEvidence([]);
+        setError(errorMessage(requestError));
+      }
+    } catch (requestError) {
+      setJob(null);
+      setEvidence([]);
+      setError(errorMessage(requestError));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [jobId]);
 
-  if (decision === "approved") {
+  useEffect(() => {
+    void loadReview();
+  }, [loadReview]);
+
+  const approveJob = useCallback(async () => {
+    setIsApproving(true);
+    try {
+      approvalKeyRef.current ??= globalThis.crypto.randomUUID();
+      const approval = await api.approveClientJob(jobId, approvalKeyRef.current);
+      await loadReview();
+      toast.success(
+        approval.payoutDispatchPending
+          ? "Work approved. Payout dispatch is queued."
+          : "Work approved and payout dispatch started.",
+      );
+    } catch (requestError) {
+      const message = errorMessage(requestError);
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsApproving(false);
+    }
+  }, [jobId, loadReview]);
+
+  const disputeJob = useCallback(async () => {
+    if (
+      !window.confirm(
+        "Dispute this submission? The backend will move the job into its dispute state.",
+      )
+    ) {
+      return;
+    }
+    setIsDisputing(true);
+    try {
+      const result = await api.disputeClientJob(jobId);
+      setJob(result.job);
+      setIsReviewPaneOpen(false);
+      toast.success("Job moved to disputed status.");
+    } catch (requestError) {
+      const message = errorMessage(requestError);
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsDisputing(false);
+    }
+  }, [jobId]);
+
+  const openEvidence = useCallback((item: ClientEvidenceSummary) => {
+    const opened = window.open(item.download.url, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      setError("Your browser blocked the evidence window. Allow pop-ups and try again.");
+    }
+  }, []);
+
+  if (isLoading) {
     return (
-      <div className="mx-auto flex max-w-md flex-col items-center py-24 text-center">
-        <SuccessCheck />
-        <h1 className="mt-6 text-4xl font-semibold">Evidence approved</h1>
-        <p className="mt-2 text-lg text-muted-foreground">
-          ₹{job.payment.toFixed(2)} released from escrow to the Verified Worker. Your {rating}-star
-          review was posted.
-        </p>
+      <div className="animate-pulse space-y-6 p-6" aria-busy="true">
+        <div className="h-24 rounded-2xl bg-muted" />
+        <div className="h-80 rounded-2xl bg-muted" />
+      </div>
+    );
+  }
+
+  if (!job) {
+    return (
+      <div className="space-y-4 p-6">
         <Link
           to="/client/jobs"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-primary"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to jobs
+        </Link>
+        <p role="alert" className="rounded-xl bg-destructive/10 p-4 text-sm text-destructive">
+          {error ?? "Job not found."}
+        </p>
+      </div>
+    );
+  }
+
+  if (job.status === "APPROVED" || job.status === "COMPLETED") {
+    return (
+      <div className="mx-auto flex max-w-md flex-col items-center px-4 py-20 text-center">
+        <SuccessCheck />
+        <h1 className="mt-6 text-3xl font-semibold sm:text-4xl">Work approved</h1>
+        <p className="mt-2 text-base text-muted-foreground sm:text-lg">
+          {formatCurrency(job.budget_cents / 100)} has been approved for payout processing.
+        </p>
+        <Link
+          to="/client/jobs/$jobId"
+          params={{ jobId }}
           className="press gradient-brand mt-6 inline-flex rounded-xl px-4 py-2.5 text-base font-semibold text-primary-foreground"
         >
-          Back to jobs
+          Back to job
         </Link>
       </div>
     );
   }
 
+  const reviewable = job.status === "SUBMITTED";
+
   return (
     <>
       <PageHeader
         title="Review evidence"
-        description={`${job.ref} · ${evidence.length} items captured in-app`}
+        description={`${job.title} - ${evidence.length} submitted evidence item${
+          evidence.length === 1 ? "" : "s"
+        }`}
         action={
           <Link
             to="/client/jobs/$jobId"
-            params={{ jobId: job.id }}
+            params={{ jobId }}
             className="press inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2.5 text-base font-medium"
           >
             <ArrowLeft className="h-4 w-4" /> Job details
@@ -89,171 +185,156 @@ function ReviewPage() {
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="space-y-6">
-          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-soft">
-            <div className="surface-grid relative grid h-[320px] place-items-center bg-muted/40 sm:h-[420px]">
-              <div className="absolute inset-0 bg-[var(--gradient-surface)]" aria-hidden />
-              <ActiveIcon className="relative h-16 w-16 text-muted-foreground" />
-              <div className="glass absolute left-4 top-4 flex flex-wrap gap-2 rounded-full px-3 py-1.5 text-sm font-medium">
-                <span className="inline-flex items-center gap-1">
-                  <MapPin className="h-3.5 w-3.5 text-success" /> GPS {active.gps} ·{" "}
-                  {active.accuracy}
-                </span>
-              </div>
-              <div className="glass absolute right-4 top-4 rounded-full px-3 py-1.5 text-sm font-medium">
-                <span className="inline-flex items-center gap-1">
-                  <Clock3 className="h-3.5 w-3.5" /> Captured {active.time}
-                </span>
-              </div>
+      {error && (
+        <p role="alert" className="mb-5 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </p>
+      )}
 
-              {active.kind !== "photo" && (
-                <div className="glass absolute inset-x-4 bottom-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl px-4 py-3">
-                  <button
-                    onClick={() => setPlaying((p) => !p)}
-                    aria-label={playing ? "Pause" : "Play"}
-                    className="press grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground"
-                  >
-                    {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  </button>
-                  <div className="h-1.5 min-w-0 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn(
-                        "h-full rounded-full bg-primary transition-all",
-                        playing ? "w-2/3" : "w-1/4",
-                      )}
-                    />
-                  </div>
-                  <span className="text-sm tabular-nums text-muted-foreground">
-                    {active.kind === "video" ? "00:20" : "00:14"}
-                  </span>
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-5 py-4">
-              <div className="min-w-0">
-                <p className="truncate text-base font-semibold">{active.task}</p>
-                <p className="text-sm capitalize text-muted-foreground">
-                  {active.kind} evidence · in-app capture
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="space-y-6">
+          <SectionCard
+            title="Submitted evidence"
+            description="Open the evidence viewer to inspect the signed original files returned by the API."
+          >
+            {evidence.length === 0 ? (
+              <div className="flex min-h-52 flex-col items-center justify-center rounded-xl border border-dashed border-border px-6 text-center">
+                <FileImage className="h-9 w-9 text-muted-foreground" />
+                <p className="mt-3 font-medium">No evidence has been submitted yet.</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Evidence becomes available once the worker uploads it through the work flow.
                 </p>
               </div>
-              <Chip tone="success">
-                <Check className="h-3.5 w-3.5" /> Verified
-              </Chip>
-            </div>
-          </div>
-
-          <SectionCard title="Gallery" description="Tap any item to inspect">
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-              {evidence.map((e) => {
-                const Icon = mediaIcon[e.kind];
-                return (
-                  <button
-                    key={e.id}
-                    onClick={() => setActiveId(e.id)}
-                    className={cn(
-                      "press surface-grid grid aspect-square place-items-center rounded-xl border-2 bg-muted/50 transition-all",
-                      e.id === activeId
-                        ? "border-primary shadow-glow"
-                        : "border-transparent hover:border-border",
-                    )}
-                    aria-label={e.task}
-                  >
-                    <Icon className="h-5 w-5 text-muted-foreground" />
-                  </button>
-                );
-              })}
-            </div>
+            ) : (
+              <ul className="space-y-3">
+                {evidence.map((item, index) => (
+                  <li key={item.id} className="rounded-xl border border-border bg-muted/30 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold">
+                          {item.media_type === "IMAGE"
+                            ? "Image"
+                            : item.media_type === "VIDEO"
+                              ? "Video"
+                              : "File"}{" "}
+                          evidence {index + 1}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Captured {new Date(item.captured_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <Chip tone={item.status === "VERIFIED" ? "success" : "neutral"}>
+                        {item.status.toLowerCase()}
+                      </Chip>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsReviewPaneOpen(true)}
+              disabled={evidence.length === 0}
+              className="press mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+            >
+              <ShieldCheck className="h-4 w-4" /> Open evidence viewer
+            </button>
           </SectionCard>
         </div>
 
         <div className="space-y-6">
           <SectionCard title="Submission summary">
-            <div className="space-y-3 text-base">
-              {[
-                ["Photos", "3 of 3"],
-                ["Videos", "2 of 2"],
-                ["Audio notes", "1 of 1"],
-                ["Location verified", "All items"],
-                ["Fraud score", "12 / 100"],
-              ].map(([k, v]) => (
-                <div key={k} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
-                  <span className="text-muted-foreground">{k}</span>
-                  <span className="font-medium">{v}</span>
-                </div>
-              ))}
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Evidence items</span>
+                <span className="font-semibold">{evidence.length}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Job status</span>
+                <Chip tone={reviewable ? "primary" : "neutral"}>
+                  {job.status.replaceAll("_", " ")}
+                </Chip>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Escrow status</span>
+                <span className="font-semibold">{job.escrow_status.replaceAll("_", " ")}</span>
+              </div>
             </div>
             <div className="mt-4">
               <AnonymousBadge role="Worker" />
             </div>
           </SectionCard>
 
-          <SectionCard title="Leave a review">
-            <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setRating(n)}
-                  aria-label={`${n} stars`}
-                  className="press"
-                >
-                  <Star
-                    className={cn(
-                      "h-7 w-7",
-                      n <= rating ? "fill-warning text-warning" : "text-muted-foreground",
-                    )}
-                  />
-                </button>
-              ))}
-            </div>
-            <textarea
-              rows={3}
-              placeholder="Share feedback about the quality of the evidence (visible anonymously)."
-              className="mt-3 w-full rounded-xl border border-border bg-card px-3.5 py-3 text-base outline-none focus:ring-2 focus:ring-ring/40"
-            />
-            <div className="mt-4 grid gap-2">
-              <button
-                onClick={() => setDecision("approved")}
-                className="press inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-success text-base font-semibold text-success-foreground"
-              >
-                <Check className="h-4 w-4" /> Approve & release ₹{job.payment.toFixed(2)}
-              </button>
-              <button
-                onClick={() => setDecision("rejected")}
-                className="press inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 text-base font-semibold text-destructive"
-              >
-                <ThumbsDown className="h-4 w-4" /> Reject submission
-              </button>
-            </div>
+          <SectionCard title="Decision">
+            <p className="text-sm text-muted-foreground">
+              Approval uses the existing settlement endpoint. Dispute uses the existing job-state
+              endpoint; it does not record a client comment.
+            </p>
+            <button
+              type="button"
+              onClick={() => void approveJob()}
+              disabled={isApproving || !reviewable}
+              className={cn(
+                "press mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold",
+                reviewable
+                  ? "bg-success text-success-foreground hover:bg-success/90"
+                  : "cursor-not-allowed bg-muted text-muted-foreground",
+              )}
+            >
+              {isApproving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+              {isApproving ? "Approving" : "Approve and release payout"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void disputeJob()}
+              disabled={isDisputing || !reviewable}
+              className="press mt-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isDisputing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ThumbsDown className="h-4 w-4" />
+              )}
+              {isDisputing ? "Disputing" : "Dispute submission"}
+            </button>
           </SectionCard>
-
-          {decision === "rejected" && (
-            <div className="animate-rise rounded-2xl border border-destructive/40 bg-destructive/10 p-5">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-                <p className="text-base font-semibold text-destructive">Confirm rejection</p>
-                <button aria-label="Dismiss" onClick={() => setDecision("none")} className="press">
-                  <X className="h-4 w-4 text-destructive" />
-                </button>
-              </div>
-              <p className="mt-1 text-base text-muted-foreground">
-                The worker will be asked to recapture the flagged items. Escrow stays held and a
-                dispute can be opened after 24 hours.
-              </p>
-              <div className="mt-4 flex gap-2">
-                <button
-                  onClick={() => setDecision("none")}
-                  className="press h-10 flex-1 rounded-xl border border-border bg-card text-base font-medium"
-                >
-                  Cancel
-                </button>
-                <button className="press h-10 flex-1 rounded-xl bg-destructive text-base font-semibold text-destructive-foreground">
-                  Reject evidence
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
+
+      {isReviewPaneOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm"
+          onClick={() => setIsReviewPaneOpen(false)}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Evidence viewer"
+            className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border bg-card shadow-lift"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <h2 className="text-base font-semibold">Evidence viewer</h2>
+              <button
+                type="button"
+                onClick={() => setIsReviewPaneOpen(false)}
+                className="press grid h-9 w-9 place-items-center rounded-xl border border-border bg-card"
+                aria-label="Close evidence viewer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-4">
+              <SubmissionReviewPane evidence={evidence} onOpenEvidence={openEvidence} />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

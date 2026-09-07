@@ -1,6 +1,10 @@
 name: ECS Release
 
 on:
+  push:
+    branches:
+      - main
+      - "feature/**"
   workflow_dispatch:
     inputs:
       target_environment:
@@ -20,13 +24,27 @@ permissions:
   contents: read
 
 concurrency:
-  group: ecs-release-${{ inputs.target_environment }}
+  group: ecs-release-${{ inputs.target_environment || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  validate:
+    name: Release Workflow Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Explain release gate
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" && "${GITHUB_REF}" = "refs/heads/main" && "${{ inputs.confirmation }}" = "release" ]]; then
+            echo "Manual main-branch release confirmed."
+          else
+            echo "Validation passed; image publishing and ECS activation require a manual main-branch release."
+          fi
+
   publish:
     name: Publish Immutable Images
-    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'release'
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirmation == 'release' }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.target_environment }}
     permissions:
@@ -98,6 +116,7 @@ jobs:
   park-migrate-activate:
     name: Park Services, Migrate, and Activate
     needs: publish
+    if: ${{ needs.publish.result == 'success' }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.target_environment }}
     permissions:
@@ -123,7 +142,6 @@ jobs:
       TF_VAR_github_branch: main
       TF_VAR_github_environment: ${{ inputs.target_environment }}
       TF_VAR_redis_auth_token: ${{ secrets.REDIS_AUTH_TOKEN }}
-      ROLLBACK_STATE_FILE: ${{ runner.temp }}/networkpeer-ecs-rollback-state.json
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -135,6 +153,8 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
           role-to-assume: ${{ vars.AWS_TERRAFORM_APPLY_ROLE_ARN }}
           role-session-name: networkpeer-ecs-release
+      - name: Initialize rollback state
+        run: echo "ROLLBACK_STATE_FILE=${RUNNER_TEMP}/networkpeer-ecs-rollback-state.json" >> "$GITHUB_ENV"
       - name: Materialize non-secret environment configuration
         if: ${{ vars.TERRAFORM_TFVARS_JSON != '' }}
         run: node -e 'require("fs").writeFileSync("environment.auto.tfvars.json", process.env.TERRAFORM_TFVARS_JSON)'

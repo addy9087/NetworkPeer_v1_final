@@ -1,0 +1,14 @@
+{
+  "name": "networkpeer-remediation",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "NetworkPeer-platform-main",
+    "packages/*"
+  ],
+  "scripts": {
+    "build:contracts": "npm run build --workspace @networkpeer/contracts",
+    "build:web": "npm run build --workspace networkpeer-platform",
+    "lint:web": "npm run lint --workspace networkpeer-platform"
+  }
+}

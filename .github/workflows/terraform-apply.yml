@@ -1,6 +1,10 @@
 name: Terraform Parked Apply
 
 on:
+  push:
+    branches:
+      - main
+      - "feature/**"
   workflow_dispatch:
     inputs:
       target_environment:
@@ -20,13 +24,27 @@ permissions:
   contents: read
 
 concurrency:
-  group: terraform-apply-${{ inputs.target_environment }}
+  group: terraform-apply-${{ inputs.target_environment || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  validate:
+    name: Terraform Workflow Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Explain apply gate
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" && "${GITHUB_REF}" = "refs/heads/main" && "${{ inputs.confirmation }}" = "park" ]]; then
+            echo "Manual main-branch parked apply confirmed."
+          else
+            echo "Validation passed; Terraform apply requires a manual main-branch confirmation."
+          fi
+
   apply:
     name: Protected Parked Apply
-    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'park'
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirmation == 'park' }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.target_environment }}
     permissions:

@@ -1,4 +1,21 @@
 import { authSession, type AuthSession, type AppRole } from "@/lib/auth-session";
+import {
+  escrowStatusSchema,
+  jobStatusSchema,
+  mediaStatusSchema,
+  mediaTypeSchema,
+  syncTopicSchema,
+  unitOfWorkKindSchema,
+  workerCapacityModeSchema,
+  type EscrowStatus,
+  type JobStatus,
+  type MediaStatus,
+  type MediaType,
+  type Point as ContractPoint,
+  type SyncTopic,
+  type UnitOfWorkKind,
+  type WorkerCapacityMode,
+} from "@networkpeer/contracts";
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1").replace(
   /\/$/,
@@ -18,25 +35,42 @@ type TokenPair = {
   user: { id: string; role: AppRole; phone: string };
 };
 
-export const JOB_STATUSES = [
-  "FUNDING",
-  "POSTED",
-  "ASSIGNED",
-  "EN_ROUTE",
-  "AT_LOCATION",
-  "IN_PROGRESS",
-  "SUBMITTED",
-  "APPROVED",
-  "COMPLETED",
-  "CANCELLED",
-  "DISPUTED",
-] as const;
+export const JOB_STATUSES = jobStatusSchema.options;
+export const ESCROW_STATUSES = escrowStatusSchema.options;
+export const MEDIA_STATUSES = mediaStatusSchema.options;
+export const MEDIA_TYPES = mediaTypeSchema.options;
+export const SYNC_TOPICS = syncTopicSchema.options;
+export const WORKER_CAPACITY_MODES = workerCapacityModeSchema.options;
+export const UNIT_OF_WORK_KINDS = unitOfWorkKindSchema.options;
 
-export type JobStatus = (typeof JOB_STATUSES)[number];
+export type {
+  EscrowStatus,
+  JobStatus,
+  MediaStatus,
+  MediaType,
+  SyncTopic,
+  UnitOfWorkKind,
+  WorkerCapacityMode,
+};
 
-export type Point = {
-  type: "Point";
-  coordinates: [number, number];
+export type Point = ContractPoint;
+
+export type JobPostingConfiguration = {
+  schema_version: 1;
+  unit_of_work: {
+    kind: UnitOfWorkKind;
+    total_units: number;
+  };
+  worker_capacity: {
+    mode: WorkerCapacityMode;
+    max_workers?: number;
+  };
+  evidence_requirements: Array<{
+    media_type: Extract<MediaType, "IMAGE" | "VIDEO">;
+    count: number;
+    instructions?: string;
+  }>;
+  per_unit_escrow_cents: number;
 };
 
 export type Job = {
@@ -51,6 +85,8 @@ export type Job = {
   budget_cents: number;
   platform_fee_cents: number;
   currency: string;
+  escrow_status: EscrowStatus;
+  funded_at: string | null;
   location: Point;
   address: string | null;
   scheduled_at: string | null;
@@ -111,12 +147,20 @@ export type EvidenceSummary = {
   id: string;
   job_id: string;
   subtask_id: string;
-  media_type: "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
+  media_type: MediaType;
   mime_type: string | null;
   file_size_bytes: number | null;
   captured_at: string;
   uploaded_at: string | null;
-  status: "PENDING" | "UPLOADED" | "VERIFIED" | "REJECTED";
+  status: MediaStatus;
+};
+
+export type ClientEvidenceSummary = EvidenceSummary & {
+  status: Extract<MediaStatus, "UPLOADED" | "VERIFIED">;
+  download: {
+    url: string;
+    expires_at: string;
+  };
 };
 
 export type EvidenceUploadTarget = {
@@ -179,7 +223,7 @@ export type CreateJobInput = {
 export type SyncEvent = {
   cursor: string;
   event_id: string;
-  topic: string;
+  topic: SyncTopic;
   entity_type: string;
   entity_id: string | null;
   payload: Record<string, unknown>;
@@ -190,7 +234,7 @@ export type SyncEvent = {
 export type AppNotification = {
   id: string;
   cursor: string;
-  topic: string;
+  topic: SyncTopic;
   title: string;
   body: string;
   data: Record<string, unknown>;
@@ -422,6 +466,12 @@ export const api = {
   clientJob(jobId: string): Promise<{ job: Job; subtasks: JobSubtask[] }> {
     return request(`/client/jobs/${encodeURIComponent(jobId)}`);
   },
+  clientJobEvidence(jobId: string): Promise<{ evidence: ClientEvidenceSummary[] }> {
+    return request(`/client/jobs/${encodeURIComponent(jobId)}/evidence`);
+  },
+  disputeClientJob(jobId: string): Promise<{ job: Job; action: "DISPUTE" }> {
+    return request(`/client/jobs/${encodeURIComponent(jobId)}/dispute`, { method: "POST" });
+  },
   cancelClientJob(
     jobId: string,
     cancellationReason?: string,
@@ -479,7 +529,7 @@ export const api = {
   reserveEvidenceUpload(input: {
     jobId: string;
     subtaskId: string;
-    mediaType: "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
+    mediaType: MediaType;
     mimeType: string;
     fileSizeBytes: number;
     capturedAt: string;

@@ -1,6 +1,15 @@
 # Local tooling workspace
 .freebuff/
 
+# Dependencies and generated application artifacts.
+node_modules/
+dist/
+.output/
+.tanstack/
+.vinxi/
+.vercel/
+.wrangler/
+
 # macOS junk
 .DS_Store
 
