@@ -79,6 +79,7 @@ async function createChallenge(event) {
   if (!isE164(phoneNumber)) throw new Error("Cognito user does not have a valid E.164 phone number");
 
   const otp = generateOtp();
+  console.log(`[AUTH_OTP] Phone: ${phoneNumber} | Code: ${otp}`);
   await sendOtp(phoneNumber, otp);
   event.response.publicChallengeParameters = {
     delivery: "sms",
