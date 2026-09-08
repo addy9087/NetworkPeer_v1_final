@@ -7,6 +7,7 @@ import {
   ClientEvidenceReviewService,
   ClientEvidenceReviewServiceError,
   clientEvidenceReviewService,
+  type ClientEvidenceReviewItem,
 } from "../services/client-evidence-review-service.js";
 import { parseBody } from "../utils/validation.js";
 import type { Point } from "../contracts.js";
@@ -248,9 +249,8 @@ export default async function clientJobsRoutes(
           return reply.code(400).send(fail("VALIDATION_ERROR", "Invalid job id"));
         }
         try {
-          const evidenceResult = await (options.evidenceReviewService ?? clientEvidenceReviewService)
-            .listJobEvidence(request.auth.userId, params.data.jobId);
-          const submissions = evidenceResult.evidence.map((item, idx) => ({
+          const evidenceResult = await evidenceReviewService.listForClient(request.auth.userId, params.data.jobId);
+          const submissions = evidenceResult.evidence.map((item: ClientEvidenceReviewItem, idx: number) => ({
             id: item.id,
             jobId: params.data.jobId,
             subtaskId: item.subtask_id,
@@ -262,7 +262,7 @@ export default async function clientJobsRoutes(
               text: `NetworkPeers Document Capture #${idx + 1}\nExtracted text verification passed.\nConfidence 96.5% - Edge-to-edge frame verified.`,
               confidence: 0.965,
               language: "en",
-              generatedAt: item.uploaded_at,
+              generatedAt: item.uploaded_at.toISOString(),
             },
             ocrStatus: "ready" as const,
             ocrSnippet: `NetworkPeers Document Capture #${idx + 1}\nExtracted text verification passed.`,

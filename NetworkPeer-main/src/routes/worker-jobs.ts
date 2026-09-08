@@ -157,7 +157,7 @@ export default async function workerJobsRoutes(app: FastifyInstance): Promise<vo
       });
 
       // Revision 2 Change 6: Worker's own submissions with live OCR snippets
-      child.get("/worker/submissions/me", async (request) => {
+      child.get("/worker/submissions/me", async (_request) => {
         // Return recent submissions for the authenticated worker
         const mockSubmissions = [
           {
