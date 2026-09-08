@@ -694,6 +694,44 @@ export const api = {
       body: JSON.stringify(data),
     });
   },
+  getProfile(): Promise<UserProfile> {
+    return request("/auth/profile");
+  },
+  updateProfile(updates: UpdateProfileInput): Promise<UserProfile> {
+    return request("/auth/profile", {
+      method: "PATCH",
+      body: JSON.stringify(updates),
+    });
+  },
+};
+
+export type UserProfile = {
+  id: string;
+  phoneNumber: string;
+  email: string | null;
+  fullName: string;
+  role: AppRole;
+  avatarUrl: string | null;
+  isActive: boolean;
+  isVerified: boolean;
+  createdAt: string;
+  workerProfile?: {
+    skills: string[];
+    hourlyRateCents: number | null;
+    rating: number;
+    totalJobsCompleted: number;
+    verificationStatus: string;
+    preferredRadiusKm: number;
+    isAvailable: boolean;
+  } | null;
+};
+
+export type UpdateProfileInput = {
+  email?: string | null;
+  avatar_url?: string | null;
+  skills?: string[];
+  preferred_radius_km?: number;
+  is_available?: boolean;
 };
 
 

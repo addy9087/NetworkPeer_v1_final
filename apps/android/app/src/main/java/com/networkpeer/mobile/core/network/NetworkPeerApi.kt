@@ -32,6 +32,8 @@ import com.networkpeer.mobile.core.model.WorkerSyncPage
 import com.networkpeer.mobile.core.model.QualityCheckResult
 import com.networkpeer.mobile.core.model.ReviewQueueResponse
 import com.networkpeer.mobile.core.model.WorkerSubmissionsResponse
+import com.networkpeer.mobile.core.model.UserProfile
+import com.networkpeer.mobile.core.model.UpdateProfileBody
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import retrofit2.Call
@@ -39,6 +41,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.HTTP
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -56,6 +59,12 @@ interface NetworkPeerApi {
 
     @GET("auth/me")
     suspend fun me(): ApiEnvelope<MeResult>
+
+    @GET("auth/profile")
+    suspend fun getProfile(): ApiEnvelope<UserProfile>
+
+    @PATCH("auth/profile")
+    suspend fun updateProfile(@Body body: UpdateProfileBody): ApiEnvelope<UserProfile>
 
     @GET("client/jobs")
     suspend fun clientJobs(

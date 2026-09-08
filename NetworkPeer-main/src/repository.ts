@@ -1564,6 +1564,132 @@ export async function recordLastLogin(userId: string): Promise<void> {
   await pool.query(`UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1`, [userId]);
 }
 
+export type FullUserProfile = {
+  id: string;
+  phoneNumber: string;
+  email: string | null;
+  fullName: string;
+  role: UserRole;
+  avatarUrl: string | null;
+  isActive: boolean;
+  isVerified: boolean;
+  createdAt: Date;
+  workerProfile?: {
+    skills: string[];
+    hourlyRateCents: number | null;
+    rating: number;
+    totalJobsCompleted: number;
+    verificationStatus: string;
+    preferredRadiusKm: number;
+    isAvailable: boolean;
+  } | null;
+};
+
+export async function getUserProfile(userId: string): Promise<FullUserProfile | null> {
+  const user = await getUserById(userId);
+  if (!user) return null;
+
+  let workerProfile: FullUserProfile["workerProfile"] = null;
+  if (user.role === "WORKER") {
+    const { rows } = await pool.query<Row>(
+      `SELECT skills, hourly_rate_cents, rating, total_jobs_completed, verification_status, preferred_radius_km, is_available
+       FROM worker_profiles WHERE user_id = $1`,
+      [userId],
+    );
+    if (rows[0]) {
+      workerProfile = {
+        skills: Array.isArray(rows[0]["skills"]) ? (rows[0]["skills"] as string[]) : [],
+        hourlyRateCents: rows[0]["hourly_rate_cents"] !== null ? Number(rows[0]["hourly_rate_cents"]) : null,
+        rating: Number(rows[0]["rating"] ?? 0),
+        totalJobsCompleted: Number(rows[0]["total_jobs_completed"] ?? 0),
+        verificationStatus: String(rows[0]["verification_status"] ?? "PENDING"),
+        preferredRadiusKm: Number(rows[0]["preferred_radius_km"] ?? 50),
+        isAvailable: Boolean(rows[0]["is_available"]),
+      };
+    }
+  }
+
+  return {
+    id: user.id,
+    phoneNumber: user.phone_number,
+    email: user.email,
+    fullName: user.full_name,
+    role: user.role,
+    avatarUrl: user.avatar_url,
+    isActive: user.is_active,
+    isVerified: user.is_verified,
+    createdAt: user.created_at,
+    workerProfile,
+  };
+}
+
+export type UpdateUserProfileInput = {
+  email?: string | null;
+  avatarUrl?: string | null;
+  skills?: string[];
+  preferredRadiusKm?: number;
+  isAvailable?: boolean;
+};
+
+export async function updateUserProfile(
+  userId: string,
+  updates: UpdateUserProfileInput,
+): Promise<FullUserProfile | null> {
+  if (updates.email !== undefined || updates.avatarUrl !== undefined) {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+
+    if (updates.email !== undefined) {
+      fields.push(`email = $${idx++}`);
+      values.push(updates.email);
+    }
+    if (updates.avatarUrl !== undefined) {
+      fields.push(`avatar_url = $${idx++}`);
+      values.push(updates.avatarUrl);
+    }
+    fields.push(`updated_at = NOW()`);
+    values.push(userId);
+
+    await pool.query(
+      `UPDATE users SET ${fields.join(", ")} WHERE id = $${idx}`,
+      values,
+    );
+  }
+
+  if (
+    updates.skills !== undefined ||
+    updates.preferredRadiusKm !== undefined ||
+    updates.isAvailable !== undefined
+  ) {
+    const workerFields: string[] = [];
+    const workerValues: unknown[] = [];
+    let wIdx = 1;
+
+    if (updates.skills !== undefined) {
+      workerFields.push(`skills = $${wIdx++}`);
+      workerValues.push(updates.skills);
+    }
+    if (updates.preferredRadiusKm !== undefined) {
+      workerFields.push(`preferred_radius_km = $${wIdx++}`);
+      workerValues.push(updates.preferredRadiusKm);
+    }
+    if (updates.isAvailable !== undefined) {
+      workerFields.push(`is_available = $${wIdx++}`);
+      workerValues.push(updates.isAvailable);
+    }
+    workerFields.push(`updated_at = NOW()`);
+    workerValues.push(userId);
+
+    await pool.query(
+      `UPDATE worker_profiles SET ${workerFields.join(", ")} WHERE user_id = $${wIdx}`,
+      workerValues,
+    );
+  }
+
+  return getUserProfile(userId);
+}
+
 // ---------------------------------------------------------------------------
 // Phase 7 administration
 // ---------------------------------------------------------------------------

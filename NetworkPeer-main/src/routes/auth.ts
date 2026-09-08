@@ -6,6 +6,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { ok, fail } from "../contracts.js";
 import { parseBody } from "../utils/validation.js";
 import { config } from "../config.js";
+import { getUserProfile, updateUserProfile } from "../repository.js";
 
 const phoneSchema = z
   .string()
@@ -166,6 +167,42 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       role: request.auth.role,
       phone: request.auth.phone,
     });
+  });
+
+  app.get("/auth/profile", { onRequest: [requireAuth] }, async (request, reply) => {
+    const profile = await getUserProfile(request.auth.userId);
+    if (!profile) {
+      return reply.code(404).send(fail("USER_NOT_FOUND", "User profile not found"));
+    }
+    return ok(profile);
+  });
+
+  const updateProfileSchema = z
+    .object({
+      email: z.string().email().nullable().optional(),
+      avatar_url: z.string().url().nullable().optional(),
+      skills: z.array(z.string().max(50)).max(20).optional(),
+      preferred_radius_km: z.number().int().min(1).max(200).optional(),
+      is_available: z.boolean().optional(),
+    })
+    .strict();
+
+  app.patch("/auth/profile", { onRequest: [requireAuth] }, async (request, reply) => {
+    const body = parseBody(updateProfileSchema, request.body);
+    if (!body.ok) {
+      return reply.code(400).send(fail("VALIDATION_ERROR", body.message));
+    }
+    const updated = await updateUserProfile(request.auth.userId, {
+      email: body.value.email,
+      avatarUrl: body.value.avatar_url,
+      skills: body.value.skills,
+      preferredRadiusKm: body.value.preferred_radius_km,
+      isAvailable: body.value.is_available,
+    });
+    if (!updated) {
+      return reply.code(404).send(fail("USER_NOT_FOUND", "User profile not found"));
+    }
+    return ok(updated);
   });
 }
 

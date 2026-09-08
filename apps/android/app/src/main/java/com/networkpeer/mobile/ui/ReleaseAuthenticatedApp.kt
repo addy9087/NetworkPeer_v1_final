@@ -25,15 +25,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.PhotoCamera
@@ -41,9 +45,26 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.Warning
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.WorkOutline
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Slider
+import com.networkpeer.mobile.core.model.UserProfile
+import com.networkpeer.mobile.core.model.UpdateProfileBody
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -133,6 +154,13 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.CancellationException
 
+enum class AppNavTab {
+    DASHBOARD,
+    JOBS,
+    WALLET,
+    PROFILE,
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ReleaseAuthenticatedApp(container: AppContainer, session: StoredSession) {
@@ -144,6 +172,10 @@ internal fun ReleaseAuthenticatedApp(container: AppContainer, session: StoredSes
     var creatingJob by rememberSaveable { mutableStateOf(false) }
     var inboxOpen by rememberSaveable { mutableStateOf(false) }
 
+    var selectedTab by rememberSaveable { mutableStateOf(AppNavTab.DASHBOARD) }
+    var profileEditMode by rememberSaveable { mutableStateOf(false) }
+    var userMenuOpen by remember { mutableStateOf(false) }
+
     LaunchedEffect(deepLinkedJobId, session.user.role) {
         val jobId = deepLinkedJobId ?: return@LaunchedEffect
         if (session.user.role == UserRole.CLIENT) {
@@ -154,20 +186,175 @@ internal fun ReleaseAuthenticatedApp(container: AppContainer, session: StoredSes
         container.consumeDeepLink()
     }
 
+    val isDetailFlow = clientJobId != null || workerJobId != null || workerPreviewJobId != null || creatingJob || inboxOpen
+    val themeMode by container.themeMode.collectAsState()
+    val systemInDark = isSystemInDarkTheme()
+    val isDark = when (themeMode) {
+        "dark" -> true
+        "light" -> false
+        else -> systemInDark
+    }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { BrandMark(compact = true) },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 actions = {
+                    IconButton(onClick = { container.toggleTheme(systemInDark) }) {
+                        Icon(
+                            imageVector = if (isDark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                            contentDescription = if (isDark) "Switch to Light Mode" else "Switch to Dark Mode",
+                            tint = if (isDark) Color(0xFF38BDF8) else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
                     IconButton(onClick = { inboxOpen = true }) {
                         Icon(Icons.Outlined.Inbox, contentDescription = stringResource(R.string.inbox))
                     }
-                    IconButton(onClick = { scope.launch { container.authRepository.logout() } }) {
-                        Icon(Icons.Outlined.Logout, contentDescription = stringResource(R.string.sign_out))
+                    Box {
+                        IconButton(onClick = { userMenuOpen = true }) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = if (session.user.role == UserRole.WORKER) "W" else "C",
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = userMenuOpen,
+                            onDismissRequest = { userMenuOpen = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(
+                                            if (session.user.role == UserRole.WORKER) "Worker Account" else "Client Account",
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                        )
+                                        Text(
+                                            session.user.phone,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                },
+                                onClick = {},
+                                enabled = false,
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Dashboard") },
+                                leadingIcon = { Icon(Icons.Outlined.Dashboard, contentDescription = null) },
+                                onClick = {
+                                    userMenuOpen = false
+                                    inboxOpen = false
+                                    clientJobId = null
+                                    workerJobId = null
+                                    workerPreviewJobId = null
+                                    creatingJob = false
+                                    selectedTab = AppNavTab.DASHBOARD
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("View Profile") },
+                                leadingIcon = { Icon(Icons.Outlined.Person, contentDescription = null) },
+                                onClick = {
+                                    userMenuOpen = false
+                                    inboxOpen = false
+                                    clientJobId = null
+                                    workerJobId = null
+                                    workerPreviewJobId = null
+                                    creatingJob = false
+                                    profileEditMode = false
+                                    selectedTab = AppNavTab.PROFILE
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Edit Profile") },
+                                leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
+                                onClick = {
+                                    userMenuOpen = false
+                                    inboxOpen = false
+                                    clientJobId = null
+                                    workerJobId = null
+                                    workerPreviewJobId = null
+                                    creatingJob = false
+                                    profileEditMode = true
+                                    selectedTab = AppNavTab.PROFILE
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (isDark) "Appearance: Light Mode" else "Appearance: Dark Mode") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = if (isDark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                                        contentDescription = null,
+                                        tint = if (isDark) Color(0xFF38BDF8) else MaterialTheme.colorScheme.primary,
+                                    )
+                                },
+                                onClick = {
+                                    userMenuOpen = false
+                                    container.toggleTheme(systemInDark)
+                                },
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.sign_out), color = MaterialTheme.colorScheme.error) },
+                                leadingIcon = { Icon(Icons.Outlined.Logout, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    userMenuOpen = false
+                                    scope.launch { container.authRepository.logout() }
+                                },
+                            )
+                        }
                     }
                 },
             )
+        },
+        bottomBar = {
+            if (!isDetailFlow) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 4.dp,
+                ) {
+                    NavigationBarItem(
+                        selected = selectedTab == AppNavTab.DASHBOARD,
+                        onClick = { selectedTab = AppNavTab.DASHBOARD },
+                        icon = { Icon(Icons.Outlined.Dashboard, contentDescription = "Dashboard") },
+                        label = { Text("Dashboard") },
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == AppNavTab.JOBS,
+                        onClick = { selectedTab = AppNavTab.JOBS },
+                        icon = { Icon(Icons.Outlined.WorkOutline, contentDescription = "Jobs") },
+                        label = { Text("Jobs") },
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == AppNavTab.WALLET,
+                        onClick = { selectedTab = AppNavTab.WALLET },
+                        icon = { Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = "Wallet") },
+                        label = { Text("Wallet") },
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == AppNavTab.PROFILE,
+                        onClick = {
+                            selectedTab = AppNavTab.PROFILE
+                            profileEditMode = false
+                        },
+                        icon = { Icon(Icons.Outlined.Person, contentDescription = "Profile") },
+                        label = { Text("Profile") },
+                    )
+                }
+            }
         },
     ) { padding ->
         androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
@@ -201,11 +388,27 @@ internal fun ReleaseAuthenticatedApp(container: AppContainer, session: StoredSes
                             jobId = clientJobId!!,
                             onBack = { clientJobId = null },
                         )
-                        else -> ClientHomeScreen(
-                            container = container,
-                            onCreateJob = { creatingJob = true },
-                            onOpenJob = { clientJobId = it },
-                        )
+                        else -> when (selectedTab) {
+                            AppNavTab.DASHBOARD -> ClientDashboardScreen(
+                                container = container,
+                                onCreateJob = { creatingJob = true },
+                                onOpenJob = { clientJobId = it },
+                                onGoToJobs = { selectedTab = AppNavTab.JOBS },
+                                onGoToWallet = { selectedTab = AppNavTab.WALLET },
+                            )
+                            AppNavTab.JOBS -> ClientHomeScreen(
+                                container = container,
+                                onCreateJob = { creatingJob = true },
+                                onOpenJob = { clientJobId = it },
+                            )
+                            AppNavTab.WALLET -> ClientWalletOnlyScreen(container = container)
+                            AppNavTab.PROFILE -> UserProfileScreen(
+                                container = container,
+                                session = session,
+                                isEditMode = profileEditMode,
+                                onToggleEditMode = { profileEditMode = it },
+                            )
+                        }
                     }
                     UserRole.WORKER -> when {
                         workerPreviewJobId != null -> WorkerJobPreviewScreen(
@@ -222,12 +425,778 @@ internal fun ReleaseAuthenticatedApp(container: AppContainer, session: StoredSes
                             jobId = workerJobId!!,
                             onBack = { workerJobId = null },
                         )
-                        else -> WorkerDiscoveryScreen(
-                            container = container,
-                            onOpenJob = { workerPreviewJobId = it },
-                        )
+                        else -> when (selectedTab) {
+                            AppNavTab.DASHBOARD -> WorkerDashboardScreen(
+                                container = container,
+                                onOpenJob = { workerPreviewJobId = it },
+                                onGoToJobs = { selectedTab = AppNavTab.JOBS },
+                                onGoToWallet = { selectedTab = AppNavTab.WALLET },
+                            )
+                            AppNavTab.JOBS -> WorkerDiscoveryScreen(
+                                container = container,
+                                onOpenJob = { workerPreviewJobId = it },
+                            )
+                            AppNavTab.WALLET -> WorkerWalletOnlyScreen(container = container)
+                            AppNavTab.PROFILE -> UserProfileScreen(
+                                container = container,
+                                session = session,
+                                isEditMode = profileEditMode,
+                                onToggleEditMode = { profileEditMode = it },
+                            )
+                        }
                     }
                     UserRole.ADMIN -> AdminBoundaryScreen()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClientDashboardScreen(
+    container: AppContainer,
+    onCreateJob: () -> Unit,
+    onOpenJob: (String) -> Unit,
+    onGoToJobs: () -> Unit,
+    onGoToWallet: () -> Unit,
+) {
+    val context = LocalContext.current
+    var profile by remember { mutableStateOf<UserProfile?>(null) }
+    var jobs by remember { mutableStateOf<List<Job>>(emptyList()) }
+    var balances by remember { mutableStateOf<List<WalletBalance>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    suspend fun load() {
+        loading = true
+        error = null
+        try {
+            profile = runCatching { container.authRepository.getProfile() }.getOrNull()
+            val jobsResp = container.marketplaceRepository.clientJobs(page = 1, perPage = 5)
+            jobs = jobsResp.items
+            balances = container.marketplaceRepository.clientWallet().balances
+        } catch (f: Throwable) {
+            error = friendlyError(context, f)
+        } finally {
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { load() }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = profile?.fullName?.take(1)?.uppercase() ?: "C",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Welcome back,", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = profile?.fullName ?: "Client Workspace",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("Client", fontWeight = FontWeight.SemiBold) },
+                        leadingIcon = { Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp)) },
+                    )
+                }
+            }
+        }
+
+        item {
+            Button(
+                onClick = onCreateJob,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Icon(Icons.Outlined.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Post a New Job", fontWeight = FontWeight.Bold)
+            }
+        }
+
+        item {
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                modifier = Modifier.fillMaxWidth().clickable { onGoToWallet() },
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Escrow & Wallet", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text("View Details >", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                    if (balances.isEmpty()) {
+                        Text("Wallet ready", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        val b = balances.first()
+                        Text(formatMoney(b.availableBalanceCents.toLongOrNull() ?: 0L, b.currency), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text("Pending Escrow: ${formatMoney(b.pendingEscrowCents.toLongOrNull() ?: 0L, b.currency)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Recent Postings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                TextButton(onClick = onGoToJobs) {
+                    Text("See All (${jobs.size})")
+                }
+            }
+        }
+
+        if (jobs.isEmpty() && !loading) {
+            item {
+                EmptyCard("No active postings", "Post a new field work job to connect with verified nearby workers.")
+            }
+        }
+
+        items(jobs.take(3), key = { it.id }) { job ->
+            ClientJobCard(job, onClick = { onOpenJob(job.id) })
+        }
+    }
+}
+
+@Composable
+private fun WorkerDashboardScreen(
+    container: AppContainer,
+    onOpenJob: (String) -> Unit,
+    onGoToJobs: () -> Unit,
+    onGoToWallet: () -> Unit,
+) {
+    val context = LocalContext.current
+    var profile by remember { mutableStateOf<UserProfile?>(null) }
+    var balances by remember { mutableStateOf<List<WalletBalance>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    suspend fun load() {
+        loading = true
+        error = null
+        try {
+            profile = runCatching { container.authRepository.getProfile() }.getOrNull()
+            balances = container.marketplaceRepository.workerWallet().balances
+        } catch (f: Throwable) {
+            error = friendlyError(context, f)
+        } finally {
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { load() }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = profile?.fullName?.take(1)?.uppercase() ?: "W",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Welcome back,", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = profile?.fullName ?: "Verified Worker",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("Verified", fontWeight = FontWeight.SemiBold) },
+                        leadingIcon = { Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp)) },
+                    )
+                }
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("Reliability", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(4.dp))
+                        Text("98%", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text("Top performer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("Completed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(4.dp))
+                        Text("${profile?.workerProfile?.totalJobsCompleted ?: 12}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text("Verified jobs", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("Rating", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(4.dp))
+                        Text("4.9 ★", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                        Text("5.0 max", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
+                modifier = Modifier.fillMaxWidth().clickable { onGoToJobs() },
+            ) {
+                Row(
+                    Modifier.padding(18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Find Nearby Work", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
+                        Text("Browse tasks matching your location and skills", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f))
+                    }
+                    Icon(Icons.Outlined.WorkOutline, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(28.dp))
+                }
+            }
+        }
+
+        item {
+            Card(
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                modifier = Modifier.fillMaxWidth().clickable { onGoToWallet() },
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Earnings & Wallet", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text("View Details >", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                    if (balances.isEmpty()) {
+                        Text("Wallet ready", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        val b = balances.first()
+                        Text(formatMoney(b.availableBalanceCents.toLongOrNull() ?: 0L, b.currency), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        if (b.lifetimeEarningsCents.toLongOrNull() != null) {
+                            Text("Lifetime earnings: ${formatMoney(b.lifetimeEarningsCents.toLong(), b.currency)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClientWalletOnlyScreen(container: AppContainer) {
+    val context = LocalContext.current
+    var balances by remember { mutableStateOf<List<WalletBalance>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    suspend fun load() {
+        loading = true
+        error = null
+        try {
+            balances = container.marketplaceRepository.clientWallet().balances
+        } catch (f: Throwable) {
+            error = friendlyError(context, f)
+        } finally {
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { load() }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Client Wallet", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("Manage your escrow deposits and funds", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = { scope.launch { load() } }, enabled = !loading) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = "Refresh wallet")
+                }
+            }
+        }
+        item { WalletCard(balances) }
+        error?.let { item { InlineNotice(it, Danger) } }
+        if (loading) item { LoadingCard("Refreshing balance...") }
+    }
+}
+
+@Composable
+private fun WorkerWalletOnlyScreen(container: AppContainer) {
+    val context = LocalContext.current
+    var balances by remember { mutableStateOf<List<WalletBalance>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    suspend fun load() {
+        loading = true
+        error = null
+        try {
+            balances = container.marketplaceRepository.workerWallet().balances
+        } catch (f: Throwable) {
+            error = friendlyError(context, f)
+        } finally {
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { load() }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Worker Wallet", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("Track your payouts and completed task earnings", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = { scope.launch { load() } }, enabled = !loading) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = "Refresh wallet")
+                }
+            }
+        }
+        item { WalletCard(balances) }
+        error?.let { item { InlineNotice(it, Danger) } }
+        if (loading) item { LoadingCard("Refreshing balance...") }
+    }
+}
+
+@Composable
+private fun UserProfileScreen(
+    container: AppContainer,
+    session: StoredSession,
+    isEditMode: Boolean,
+    onToggleEditMode: (Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var profile by remember { mutableStateOf<UserProfile?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var successMsg by remember { mutableStateOf<String?>(null) }
+
+    var email by rememberSaveable { mutableStateOf("") }
+    var radiusKm by rememberSaveable { mutableStateOf(50) }
+    var isAvailable by rememberSaveable { mutableStateOf(true) }
+
+    suspend fun load() {
+        loading = true
+        error = null
+        try {
+            val p = container.authRepository.getProfile()
+            profile = p
+            email = p.email ?: ""
+            radiusKm = p.workerProfile?.preferredRadiusKm ?: 50
+            isAvailable = p.workerProfile?.isAvailable ?: true
+        } catch (f: Throwable) {
+            error = friendlyError(context, f)
+        } finally {
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { load() }
+
+    fun save() {
+        scope.launch {
+            saving = true
+            error = null
+            successMsg = null
+            try {
+                val updated = container.authRepository.updateProfile(
+                    UpdateProfileBody(
+                        email = email.trim().ifEmpty { null },
+                        preferredRadiusKm = if (session.user.role == UserRole.WORKER) radiusKm else null,
+                        isAvailable = if (session.user.role == UserRole.WORKER) isAvailable else null,
+                    ),
+                )
+                profile = updated
+                successMsg = "Profile updated successfully!"
+                onToggleEditMode(false)
+            } catch (f: Throwable) {
+                error = friendlyError(context, f)
+            } finally {
+                saving = false
+            }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = if (isEditMode) "Edit Profile" else "Your Profile",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = if (isEditMode) "Verified identity credentials remain locked" else "Verified identity and credentials",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (!isEditMode) {
+                    Button(onClick = { onToggleEditMode(true) }) {
+                        Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Edit")
+                    }
+                } else {
+                    OutlinedButton(onClick = { onToggleEditMode(false) }) {
+                        Icon(Icons.Outlined.ArrowBack, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Cancel")
+                    }
+                }
+            }
+        }
+
+        successMsg?.let { msg ->
+            item { InlineNotice(msg, Success) }
+        }
+
+        error?.let { err ->
+            item { InlineNotice(err, Danger) }
+        }
+
+        if (loading) {
+            item { LoadingCard("Loading profile...") }
+        } else {
+            item {
+                Card(
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(28.dp))
+                                .background(MaterialTheme.colorScheme.primary),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = profile?.fullName?.take(1)?.uppercase() ?: (if (session.user.role == UserRole.WORKER) "W" else "C"),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                style = MaterialTheme.typography.headlineSmall,
+                            )
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = profile?.fullName ?: session.user.role.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Icon(Icons.Outlined.CheckCircle, contentDescription = "Verified", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            }
+                            Text(
+                                text = profile?.phoneNumber ?: session.user.phone,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = if (session.user.role == UserRole.WORKER) "Field Worker Account" else "Client Account",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (isEditMode) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+                        shape = MaterialTheme.shapes.medium,
+                    ) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
+                            Icon(Icons.Outlined.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text("Identity Protection Enforced", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                                Text("Full Name and Phone Number are verified credentials bound to your SMS OTP and cannot be modified.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = profile?.fullName ?: "",
+                        onValueChange = {},
+                        enabled = false,
+                        readOnly = true,
+                        label = { Text("Full Name (Verified Identity)") },
+                        trailingIcon = { Icon(Icons.Outlined.Lock, contentDescription = "Locked") },
+                        supportingText = { Text("Locked: Identity verified via KYC") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = profile?.phoneNumber ?: session.user.phone,
+                        onValueChange = {},
+                        enabled = false,
+                        readOnly = true,
+                        label = { Text("Phone Number (Verified Account)") },
+                        trailingIcon = { Icon(Icons.Outlined.Lock, contentDescription = "Locked") },
+                        supportingText = { Text("Locked: Verified SMS OTP login number") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                item {
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = { email = it },
+                        enabled = true,
+                        label = { Text("Email Address") },
+                        placeholder = { Text("you@example.com") },
+                        supportingText = { Text("For receipts, dispute updates and reports") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                if (session.user.role == UserRole.WORKER) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("Available for Dispatch", fontWeight = FontWeight.SemiBold)
+                                        Text("Accept immediate job matches", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Switch(checked = isAvailable, onCheckedChange = { isAvailable = it })
+                                }
+                                HorizontalDivider()
+                                Text("Dispatch Radius: $radiusKm km", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                                Slider(
+                                    value = radiusKm.toFloat(),
+                                    onValueChange = { radiusKm = it.toInt() },
+                                    valueRange = 5f..100f,
+                                    steps = 18,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Button(
+                        onClick = { save() },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        enabled = !saving,
+                    ) {
+                        if (saving) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                        } else {
+                            Icon(Icons.Outlined.Save, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Save Changes", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            } else {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("Account Details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            HorizontalDivider()
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Full Name", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(profile?.fullName ?: "—", fontWeight = FontWeight.SemiBold)
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Phone Number", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(profile?.phoneNumber ?: session.user.phone, fontWeight = FontWeight.SemiBold)
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Email", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(profile?.email?.ifEmpty { "Not set" } ?: "Not set", fontWeight = FontWeight.Medium)
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("KYC Status", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Tier 1 Verified", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            }
+                            if (session.user.role == UserRole.WORKER) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Dispatch Radius", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("${profile?.workerProfile?.preferredRadiusKm ?: 50} km", fontWeight = FontWeight.SemiBold)
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Availability", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        if (profile?.workerProfile?.isAvailable != false) "Online" else "Offline",
+                                        color = if (profile?.workerProfile?.isAvailable != false) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    val themeMode by container.themeMode.collectAsState()
+                    val systemInDark = isSystemInDarkTheme()
+                    val isDark = when (themeMode) {
+                        "dark" -> true
+                        "light" -> false
+                        else -> systemInDark
+                    }
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    if (isDark) Icons.Outlined.DarkMode else Icons.Outlined.LightMode,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Appearance & Theme", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            }
+                            Text(
+                                "Choose how NetworkPeers looks on your device.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                for ((mode, label) in listOf("system" to "System", "light" to "Light", "dark" to "Dark")) {
+                                    val selected = themeMode == mode
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)
+                                            .clickable { container.setThemeMode(mode) }
+                                            .padding(vertical = 10.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Button(
+                        onClick = { onToggleEditMode(true) },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                    ) {
+                        Icon(Icons.Outlined.Edit, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Edit Profile", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

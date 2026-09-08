@@ -17,7 +17,6 @@
     <string name="phone_invalid_error">Please enter a valid 10-digit mobile number</string>
     <string name="otp_required_error">Please enter the verification code</string>
     <string name="otp_digits_error">Please enter the 6-digit verification code</string>
-    <string name="use_demo_code">Demo code: 888888</string>
     <string name="role_prompt">I am using NetworkPeers as</string>
     <string name="client">Client</string>
     <string name="worker">Worker</string>

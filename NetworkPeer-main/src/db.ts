@@ -5,6 +5,19 @@ import { logger } from "./observability.js";
 
 const { Pool } = pg;
 
+function isLoopbackOrLocal(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const sslmode = parsed.searchParams.get("sslmode");
+    if (sslmode === "disable") return true;
+    if (host === "localhost" || host === "127.0.0.1" || host === "postgres" || host === "db") return true;
+    return false;
+  } catch {
+    return url.includes("localhost") || url.includes("127.0.0.1") || url.includes("sslmode=disable");
+  }
+}
+
 function createPostgresPool(connectionString: string, name: string, min = config.DATABASE_POOL_MIN) {
   const isDevOrStaging = config.NODE_ENV !== "production";
   const poolConfig: pg.PoolConfig = {
@@ -15,7 +28,7 @@ function createPostgresPool(connectionString: string, name: string, min = config
     connectionTimeoutMillis: 5000,
     statement_timeout: 30000,
   };
-  if (isDevOrStaging) {
+  if (isDevOrStaging && !isLoopbackOrLocal(connectionString)) {
     poolConfig.ssl = { rejectUnauthorized: false };
   }
   const instance = new Pool(poolConfig);

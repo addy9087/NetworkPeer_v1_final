@@ -516,3 +516,38 @@ data class WorkerSubmissionsResponse(
     val submissions: List<SubmissionItem>,
 )
 
+@Serializable
+data class WorkerProfileData(
+    val skills: List<String> = emptyList(),
+    val hourlyRateCents: Int? = null,
+    val rating: Double = 0.0,
+    val totalJobsCompleted: Int = 0,
+    val verificationStatus: String = "PENDING",
+    val preferredRadiusKm: Int = 50,
+    val isAvailable: Boolean = true,
+)
+
+@Serializable
+data class UserProfile(
+    val id: String,
+    val phoneNumber: String,
+    val email: String? = null,
+    val fullName: String,
+    val role: UserRole,
+    val avatarUrl: String? = null,
+    val isActive: Boolean = true,
+    val isVerified: Boolean = false,
+    val createdAt: String? = null,
+    val workerProfile: WorkerProfileData? = null,
+)
+
+@Serializable
+data class UpdateProfileBody(
+    val email: String? = null,
+    @SerialName("avatar_url") val avatarUrl: String? = null,
+    val skills: List<String>? = null,
+    @SerialName("preferred_radius_km") val preferredRadiusKm: Int? = null,
+    @SerialName("is_available") val isAvailable: Boolean? = null,
+)
+
+

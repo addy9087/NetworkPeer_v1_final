@@ -92,6 +92,14 @@ class AuthRepository(
             cancellation?.let { throw it }
         }
     }
+
+    suspend fun getProfile(): com.networkpeer.mobile.core.model.UserProfile = apiCall {
+        api.getProfile()
+    }
+
+    suspend fun updateProfile(body: com.networkpeer.mobile.core.model.UpdateProfileBody): com.networkpeer.mobile.core.model.UserProfile = apiCall {
+        api.updateProfile(body)
+    }
 }
 
 class MarketplaceRepository(

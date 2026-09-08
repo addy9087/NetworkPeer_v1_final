@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Bell, Briefcase, LayoutDashboard, PlusCircle, Wallet } from "lucide-react";
+import { Bell, Briefcase, LayoutDashboard, PlusCircle, Wallet, User } from "lucide-react";
 
 import { PortalShell, type NavItem } from "@/components/shell/portal-shell";
 import { api } from "@/lib/api";
@@ -11,6 +11,7 @@ const baseNav: NavItem[] = [
   { label: "My jobs", to: "/client/jobs", icon: Briefcase, badge: "6" },
   { label: "Post a job", to: "/client/jobs/new", icon: PlusCircle },
   { label: "Wallet", to: "/client/wallet", icon: Wallet },
+  { label: "Profile", to: "/client/profile", icon: User },
   { label: "Notifications", to: "/client/notifications", icon: Bell },
 ];
 

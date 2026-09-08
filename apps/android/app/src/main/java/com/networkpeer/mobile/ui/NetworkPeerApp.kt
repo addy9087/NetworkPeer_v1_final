@@ -25,10 +25,12 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.BusinessCenter
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Engineering
 import androidx.compose.material.icons.outlined.FlashOn
 import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.VerifiedUser
@@ -39,6 +41,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -275,10 +278,8 @@ private fun AuthScreen(container: AppContainer) {
         otpRequested = true
         challengeId = result.challengeId
         devOtp = result.otp
-        otp = result.otp ?: ""
-        deliveryNote = if (!result.otp.isNullOrBlank()) {
-            context.getString(R.string.otp_development_code, result.otp)
-        } else if (result.delivery.transport?.equals("sms", ignoreCase = true) == true) {
+        otp = ""
+        deliveryNote = if (result.delivery.transport?.equals("sms", ignoreCase = true) == true) {
             context.getString(R.string.otp_sent)
         } else {
             context.getString(R.string.otp_requested)
@@ -291,7 +292,27 @@ private fun AuthScreen(container: AppContainer) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            BrandMark()
+            val themeMode by container.themeMode.collectAsState()
+            val systemInDark = isSystemInDarkTheme()
+            val isDark = when (themeMode) {
+                "dark" -> true
+                "light" -> false
+                else -> systemInDark
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BrandMark()
+                IconButton(onClick = { container.toggleTheme(systemInDark) }) {
+                    Icon(
+                        imageVector = if (isDark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                        contentDescription = if (isDark) "Switch to Light Mode" else "Switch to Dark Mode",
+                        tint = if (isDark) BrandSkyLight else BrandSkyPrimary,
+                    )
+                }
+            }
             Spacer(Modifier.height(16.dp))
 
             Text(
@@ -431,39 +452,24 @@ private fun AuthScreen(container: AppContainer) {
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
-                                TextButton(
-                                    onClick = {
-                                        otp = "888888"
-                                        error = null
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.FlashOn,
-                                        contentDescription = null,
-                                        tint = BrandSkyPrimary,
-                                        modifier = Modifier.size(14.dp),
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        stringResource(R.string.use_demo_code),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = BrandSkyPrimary,
-                                    )
-                                }
+                                Text(
+                                    text = "${otp.length}/6 digits",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (otp.length == 6) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = if (otp.length == 6) FontWeight.Bold else FontWeight.Normal,
+                                )
                             }
 
                             OutlinedTextField(
                                 value = otp,
-                                onValueChange = {
-                                    otp = it.filter(Char::isDigit).take(6)
+                                onValueChange = { input ->
+                                    otp = input.filter(Char::isDigit).take(6)
                                     error = null
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 placeholder = {
                                     Text(
-                                        text = "Enter 6-digit code (888888)",
+                                        text = "Enter 6-digit code",
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                                     )
                                 },
@@ -561,9 +567,9 @@ private fun AuthScreen(container: AppContainer) {
                             containerColor = Color.Transparent,
                         ),
                         contentPadding = PaddingValues(0.dp),
-                        enabled = phone.isNotBlank() && (!otpRequested || otp.isNotBlank()) && !loading,
+                        enabled = phone.isNotBlank() && (!otpRequested || otp.length == 6) && !loading,
                     ) {
-                        val buttonBrush = if (phone.isNotBlank() && (!otpRequested || otp.isNotBlank()) && !loading) {
+                        val buttonBrush = if (phone.isNotBlank() && (!otpRequested || otp.length == 6) && !loading) {
                             Brush.horizontalGradient(
                                 listOf(
                                     BrandSkyPrimary,
@@ -741,7 +747,7 @@ internal fun statusLabel(status: JobStatus): String = stringResource(
 internal fun friendlyError(context: Context, failure: Throwable): String = when (failure) {
     is NetworkPeerApiException -> {
         if (failure.statusCode == 401 || failure.code.contains("401") || failure.code.contains("OTP_INVALID") || failure.message.contains("401", ignoreCase = true)) {
-            "Invalid verification code. Please check your SMS or tap 'Demo code: 888888' above."
+            "Invalid verification code. Please enter the 6-digit code sent to your phone."
         } else {
             "${failure.code}: ${failure.message}"
         }

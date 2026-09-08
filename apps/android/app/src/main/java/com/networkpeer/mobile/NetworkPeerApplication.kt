@@ -76,6 +76,26 @@ class AppContainer(context: Context) {
     private val _deepLinkedJobId = MutableStateFlow<String?>(null)
     val deepLinkedJobId = _deepLinkedJobId.asStateFlow()
 
+    private val themePreferences = applicationContext.getSharedPreferences("networkpeer_theme", Context.MODE_PRIVATE)
+    private val _themeMode = MutableStateFlow(themePreferences.getString("theme_mode", "system") ?: "system")
+    val themeMode = _themeMode.asStateFlow()
+
+    fun setThemeMode(mode: String) {
+        _themeMode.value = mode
+        themePreferences.edit().putString("theme_mode", mode).apply()
+    }
+
+    fun toggleTheme(isSystemDark: Boolean) {
+        val current = _themeMode.value
+        val effectiveDark = when (current) {
+            "dark" -> true
+            "light" -> false
+            else -> isSystemDark
+        }
+        val next = if (effectiveDark) "light" else "dark"
+        setThemeMode(next)
+    }
+
     init {
         val initialUserId = client.sessionStore.current()?.user?.id
         durableState.activate(initialUserId)

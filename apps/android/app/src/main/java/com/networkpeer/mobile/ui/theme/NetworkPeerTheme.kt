@@ -70,9 +70,12 @@ private val DarkColors = darkColorScheme(
 )
 
 @Composable
-fun NetworkPeerTheme(content: @Composable () -> Unit) {
+fun NetworkPeerTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit,
+) {
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
+        colorScheme = if (darkTheme) DarkColors else LightColors,
         shapes = MaterialTheme.shapes.copy(
             extraSmall = RoundedCornerShape(8.dp),
             small = RoundedCornerShape(12.dp),

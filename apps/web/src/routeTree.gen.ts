@@ -26,6 +26,7 @@ import { Route as AuthAdminRouteImport } from './routes/auth.admin'
 import { Route as AuthVerifyRouteImport } from './routes/auth.verify'
 import { Route as ClientIndexRouteImport } from './routes/client.index'
 import { Route as ClientNotificationsRouteImport } from './routes/client.notifications'
+import { Route as ClientProfileRouteImport } from './routes/client.profile'
 import { Route as ClientWalletRouteImport } from './routes/client.wallet'
 import { Route as DevSettleFundingRouteImport } from './routes/dev.settle-funding'
 import { Route as WorkerIndexRouteImport } from './routes/worker.index'
@@ -123,6 +124,11 @@ const ClientNotificationsRoute = ClientNotificationsRouteImport.update({
   path: '/notifications',
   getParentRoute: () => ClientRoute,
 } as any)
+const ClientProfileRoute = ClientProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => ClientRoute,
+} as any)
 const ClientWalletRoute = ClientWalletRouteImport.update({
   id: '/wallet',
   path: '/wallet',
@@ -194,6 +200,7 @@ export interface FileRoutesByFullPath {
   '/auth/admin': typeof AuthAdminRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/client/notifications': typeof ClientNotificationsRoute
+  '/client/profile': typeof ClientProfileRoute
   '/client/wallet': typeof ClientWalletRoute
   '/dev/settle-funding': typeof DevSettleFundingRoute
   '/worker/profile': typeof WorkerProfileRoute
@@ -221,6 +228,7 @@ export interface FileRoutesByTo {
   '/auth/admin': typeof AuthAdminRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/client/notifications': typeof ClientNotificationsRoute
+  '/client/profile': typeof ClientProfileRoute
   '/client/wallet': typeof ClientWalletRoute
   '/dev/settle-funding': typeof DevSettleFundingRoute
   '/worker/profile': typeof WorkerProfileRoute
@@ -252,6 +260,7 @@ export interface FileRoutesById {
   '/auth/admin': typeof AuthAdminRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/client/notifications': typeof ClientNotificationsRoute
+  '/client/profile': typeof ClientProfileRoute
   '/client/wallet': typeof ClientWalletRoute
   '/dev/settle-funding': typeof DevSettleFundingRoute
   '/worker/profile': typeof WorkerProfileRoute
@@ -284,6 +293,7 @@ export interface FileRouteTypes {
     | '/auth/admin'
     | '/auth/verify'
     | '/client/notifications'
+    | '/client/profile'
     | '/client/wallet'
     | '/dev/settle-funding'
     | '/worker/profile'
@@ -311,6 +321,7 @@ export interface FileRouteTypes {
     | '/auth/admin'
     | '/auth/verify'
     | '/client/notifications'
+    | '/client/profile'
     | '/client/wallet'
     | '/dev/settle-funding'
     | '/worker/profile'
@@ -341,6 +352,7 @@ export interface FileRouteTypes {
     | '/auth/admin'
     | '/auth/verify'
     | '/client/notifications'
+    | '/client/profile'
     | '/client/wallet'
     | '/dev/settle-funding'
     | '/worker/profile'
@@ -489,6 +501,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientNotificationsRouteImport
       parentRoute: typeof ClientRoute
     }
+    '/client/profile': {
+      id: '/client/profile'
+      path: '/profile'
+      fullPath: '/client/profile'
+      preLoaderRoute: typeof ClientProfileRouteImport
+      parentRoute: typeof ClientRoute
+    }
     '/client/wallet': {
       id: '/client/wallet'
       path: '/wallet'
@@ -595,6 +614,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface ClientRouteChildren {
   ClientNotificationsRoute: typeof ClientNotificationsRoute
+  ClientProfileRoute: typeof ClientProfileRoute
   ClientWalletRoute: typeof ClientWalletRoute
   ClientIndexRoute: typeof ClientIndexRoute
   ClientJobsJobIdRoute: typeof ClientJobsJobIdRoute
@@ -605,6 +625,7 @@ interface ClientRouteChildren {
 
 const ClientRouteChildren: ClientRouteChildren = {
   ClientNotificationsRoute: ClientNotificationsRoute,
+  ClientProfileRoute: ClientProfileRoute,
   ClientWalletRoute: ClientWalletRoute,
   ClientIndexRoute: ClientIndexRoute,
   ClientJobsJobIdRoute: ClientJobsJobIdRoute,
