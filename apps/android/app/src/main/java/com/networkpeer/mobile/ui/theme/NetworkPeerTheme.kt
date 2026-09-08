@@ -9,49 +9,63 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 
-val BrandIndigo = Color(0xFF4F46E5)
-val BrandTeal = Color(0xFF14B8A6)
-val Slate950 = Color(0xFF0F172A)
+// Light Blue / Sky Design Tokens (Matching NetworkPeers Web)
+val BrandSkyPrimary = Color(0xFF0284C7)    // Sky 600 - Main Brand Light Blue
+val BrandSkyLight = Color(0xFF38BDF8)      // Sky 400 - Gradient Accent
+val BrandSkyVibrant = Color(0xFF0EA5E9)    // Sky 500
+val BrandSkySoft = Color(0xFFF0F9FF)       // Sky 50 - Soft surface tint
+val BrandSkyContainer = Color(0xFFE0F2FE)  // Sky 100 - Card accent / Selected chips
+val BrandSkyText = Color(0xFF0369A1)       // Sky 700 - High contrast text
+val BrandTeal = Color(0xFF0D9488)          // Teal 600
+val BrandTealSoft = Color(0xFFCCFBF1)
+
+val Slate950 = Color(0xFF0B1220)
+val Slate900 = Color(0xFF0F172A)
 val Slate700 = Color(0xFF334155)
 val Slate500 = Color(0xFF64748B)
-val SurfaceMist = Color(0xFFF8FAFC)
+val Slate400 = Color(0xFF94A3B8)
+val Slate200 = Color(0xFFE2E8F0)
+val SurfaceMist = Color(0xFFF8FAFC)        // Clean subtle background
+
 val Success = Color(0xFF16A34A)
 val Warning = Color(0xFFD97706)
 val Danger = Color(0xFFDC2626)
 
 private val LightColors = lightColorScheme(
-    primary = BrandIndigo,
+    primary = BrandSkyPrimary,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFEEF2FF),
-    onPrimaryContainer = Color(0xFF312E81),
+    primaryContainer = BrandSkyContainer,
+    onPrimaryContainer = BrandSkyText,
     secondary = BrandTeal,
-    onSecondary = Color(0xFF042F2E),
-    secondaryContainer = Color(0xFFCCFBF1),
+    onSecondary = Color.White,
+    secondaryContainer = BrandTealSoft,
+    onSecondaryContainer = Color(0xFF134E4A),
     background = SurfaceMist,
-    onBackground = Slate950,
+    onBackground = Slate900,
     surface = Color.White,
-    onSurface = Slate950,
+    onSurface = Slate900,
     surfaceVariant = Color(0xFFF1F5F9),
     onSurfaceVariant = Slate500,
-    outline = Color(0xFFE2E8F0),
+    outline = Slate200,
+    outlineVariant = Color(0xFFCBD5E1),
     error = Danger,
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF818CF8),
-    onPrimary = Color(0xFF111827),
-    primaryContainer = Color(0xFF312E81),
-    onPrimaryContainer = Color(0xFFE0E7FF),
-    secondary = Color(0xFF5EEAD4),
+    primary = BrandSkyLight,
+    onPrimary = Slate950,
+    primaryContainer = Color(0xFF0369A1),
+    onPrimaryContainer = Color(0xFFE0F2FE),
+    secondary = Color(0xFF2DD4BF),
     onSecondary = Color(0xFF042F2E),
-    secondaryContainer = Color(0xFF134E4A),
-    background = Color(0xFF111827),
+    secondaryContainer = Color(0xFF115E59),
+    background = Color(0xFF0B1220),
     onBackground = Color(0xFFF8FAFC),
-    surface = Color(0xFF1E293B),
+    surface = Color(0xFF131D31),
     onSurface = Color(0xFFF8FAFC),
-    surfaceVariant = Color(0xFF334155),
-    onSurfaceVariant = Color(0xFFCBD5E1),
-    outline = Color(0xFF475569),
+    surfaceVariant = Color(0xFF1E293B),
+    onSurfaceVariant = Color(0xFF94A3B8),
+    outline = Color(0xFF334155),
     error = Color(0xFFF87171),
 )
 
@@ -64,7 +78,7 @@ fun NetworkPeerTheme(content: @Composable () -> Unit) {
             small = RoundedCornerShape(12.dp),
             medium = RoundedCornerShape(16.dp),
             large = RoundedCornerShape(20.dp),
-            extraLarge = RoundedCornerShape(28.dp),
+            extraLarge = RoundedCornerShape(24.dp),
         ),
         content = content,
     )
