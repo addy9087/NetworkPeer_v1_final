@@ -353,12 +353,10 @@ function Landing() {
         </div>
       </section>
 
-      <footer className="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-10 text-sm text-muted-foreground sm:px-6">
+      <footer className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-10 text-sm text-muted-foreground sm:px-6">
         <p>© 2026 NetworkPeers. Anonymous until accepted.</p>
-        <Link to="/auth/admin" className="hover:text-foreground">
-          Admin access
-        </Link>
       </footer>
+
     </div>
   );
 }

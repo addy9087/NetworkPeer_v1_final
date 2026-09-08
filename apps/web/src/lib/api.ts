@@ -207,9 +207,79 @@ export type WorkerJobDetail = {
   address: string | null;
   is_assigned_to_requester: boolean;
   subtasks: JobSubtask[];
+  capacity?: {
+    mode: WorkerCapacityMode;
+    maxWorkers?: number | null;
+  };
+  assignmentCount?: number;
+};
+
+export type QualityCheckMetric = {
+  passed: boolean;
+  score: number;
+  message?: string;
+};
+
+export type QualityCheckResult = {
+  passed: boolean;
+  checks: {
+    edgeCoverage: QualityCheckMetric;
+    sharpness: QualityCheckMetric;
+    exposure: QualityCheckMetric;
+  };
+  overallScore: number;
+  engineVersion: string;
+  ranOnDevice: boolean;
+  checkedAt: string;
+};
+
+export type OCRResult = {
+  engineVersion?: string;
+  text: string;
+  confidence: number;
+  language?: string;
+  generatedAt?: string;
+};
+
+export type ReviewEvent = {
+  id: string;
+  submissionId: string;
+  reviewerRole: "correctionist" | "client" | "admin";
+  reviewerId: string;
+  decision: "approve" | "redo" | "reject";
+  note?: string;
+  createdAt: string;
+};
+
+export type Submission = {
+  id: string;
+  jobId: string;
+  assignmentId?: string;
+  workerId: string;
+  subtaskId?: string;
+  unitRef?: string;
+  mediaUrl: string;
+  thumbnailUrl?: string;
+  ocrResult?: OCRResult;
+  ocrStatus: "processing" | "ready" | "failed";
+  ocrSnippet?: string;
+  qualityCheck?: QualityCheckResult;
+  status: "pending_review" | "approved" | "redo_requested" | "client_approved" | "client_rejected";
+  reviewHistory: ReviewEvent[];
+  submittedAt: string;
+};
+
+export type JobReviewSummary = {
+  totalUnits: number;
+  collected: number;
+  correctionistApproved: number;
+  clientApproved: number;
+  clientRejected: number;
+  redoRequested: number;
 };
 
 export type CreateJobInput = {
+
   title: string;
   description: string;
   category: string;
@@ -594,7 +664,38 @@ export const api = {
   submitWork(jobId: string): Promise<{ job_id: string; status: "SUBMITTED" }> {
     return request("/work/submit", { method: "POST", body: JSON.stringify({ job_id: jobId }) });
   },
+  reviewQueue(jobId: string, role = "correctionist"): Promise<{ submissions: Submission[] }> {
+    return request(`/worker/jobs/${encodeURIComponent(jobId)}/review-queue?role=${encodeURIComponent(role)}`);
+  },
+  submitReview(
+    submissionId: string,
+    decision: "approve" | "redo" | "reject",
+    note?: string,
+    role: "correctionist" | "client" = "correctionist",
+  ): Promise<{ submissionId: string; status: string; reviewEvent: ReviewEvent }> {
+    const basePath = role === "client" ? "/client" : "/worker";
+    return request(`${basePath}/submissions/${encodeURIComponent(submissionId)}/review`, {
+      method: "POST",
+      body: JSON.stringify({ decision, note }),
+    });
+  },
+  workerSubmissions(): Promise<{ submissions: Submission[] }> {
+    return request("/worker/submissions/me");
+  },
+  clientJobSubmissions(jobId: string): Promise<{ submissions: Submission[] }> {
+    return request(`/client/jobs/${encodeURIComponent(jobId)}/submissions`);
+  },
+  jobReviewSummary(jobId: string): Promise<JobReviewSummary> {
+    return request(`/client/jobs/${encodeURIComponent(jobId)}/review-summary`);
+  },
+  sendQualityTelemetry(data: Record<string, unknown>): Promise<{ logged: boolean }> {
+    return request("/telemetry/quality-check", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
 };
+
 
 export function realtimeBaseUrl(): string {
   if (typeof window !== "undefined") {

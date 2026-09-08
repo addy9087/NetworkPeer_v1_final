@@ -175,6 +175,8 @@ data class WorkerJobSummary(
     val scheduled_at: String? = null,
     val created_at: String,
     val distance_band: String,
+    val capacity_mode: String? = null,
+    val joined_workers: Int? = null,
 )
 
 @Serializable
@@ -194,7 +196,10 @@ data class WorkerJobDetail(
     val address: String? = null,
     val is_assigned_to_requester: Boolean,
     val subtasks: List<JobSubtask>,
+    val capacity_mode: String? = null,
+    val joined_workers: Int? = null,
 )
+
 
 @Serializable
 data class ClientJobDetail(
@@ -418,3 +423,96 @@ data class DeviceRegistration(
 
 @Serializable
 data class DeviceDeregistration(val deactivated: Boolean)
+
+// Revision 2 Specification Models
+@Serializable
+enum class WorkerCapacityMode { single, capped, unlimited }
+
+@Serializable
+enum class WorkerRole { collectionist, correctionist }
+
+@Serializable
+data class JobCapacity(
+    val mode: WorkerCapacityMode,
+    val maxWorkers: Int? = null,
+)
+
+@Serializable
+data class UnitOfWork(
+    val kind: String,
+    val totalUnits: Int? = null,
+)
+
+@Serializable
+data class QualityMetric(
+    val passed: Boolean,
+    val score: Double,
+    val message: String? = null,
+)
+
+@Serializable
+data class QualityChecks(
+    val edgeCoverage: QualityMetric,
+    val sharpness: QualityMetric,
+    val exposure: QualityMetric,
+)
+
+@Serializable
+data class QualityCheckResult(
+    val passed: Boolean,
+    val checks: QualityChecks,
+    val overallScore: Double,
+    val engineVersion: String = "np-qa-v2",
+    val ranOnDevice: Boolean = true,
+    val checkedAt: String,
+)
+
+@Serializable
+data class OCRResult(
+    val text: String,
+    val confidence: Double,
+    val engineVersion: String? = "tesseract-5.3",
+    val language: String? = "en",
+    val generatedAt: String? = null,
+)
+
+@Serializable
+data class ReviewEvent(
+    val id: String,
+    val submissionId: String,
+    val reviewerRole: String,
+    val reviewerId: String,
+    val decision: String,
+    val note: String? = null,
+    val createdAt: String,
+)
+
+@Serializable
+data class SubmissionItem(
+    val id: String,
+    val jobId: String,
+    val assignmentId: String? = null,
+    val workerId: String = "anonymized",
+    val subtaskId: String? = null,
+    val unitRef: String,
+    val mediaUrl: String,
+    val thumbnailUrl: String? = null,
+    val ocrResult: OCRResult? = null,
+    val ocrStatus: String = "ready",
+    val ocrSnippet: String? = null,
+    val qualityCheck: QualityCheckResult? = null,
+    val status: String = "pending_review",
+    val reviewHistory: List<ReviewEvent> = emptyList(),
+    val submittedAt: String,
+)
+
+@Serializable
+data class ReviewQueueResponse(
+    val submissions: List<SubmissionItem>,
+)
+
+@Serializable
+data class WorkerSubmissionsResponse(
+    val submissions: List<SubmissionItem>,
+)
+

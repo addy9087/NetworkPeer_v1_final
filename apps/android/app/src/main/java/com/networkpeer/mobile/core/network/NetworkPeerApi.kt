@@ -29,6 +29,9 @@ import com.networkpeer.mobile.core.model.WalletResponse
 import com.networkpeer.mobile.core.model.WorkStatusResult
 import com.networkpeer.mobile.core.model.WorkerJobDetail
 import com.networkpeer.mobile.core.model.WorkerSyncPage
+import com.networkpeer.mobile.core.model.QualityCheckResult
+import com.networkpeer.mobile.core.model.ReviewQueueResponse
+import com.networkpeer.mobile.core.model.WorkerSubmissionsResponse
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import retrofit2.Call
@@ -157,6 +160,21 @@ interface NetworkPeerApi {
 
     @HTTP(method = "DELETE", path = "notifications/devices", hasBody = true)
     suspend fun deregisterDevice(@Body body: DeregisterDeviceBody): ApiEnvelope<DeviceDeregistration>
+
+    @GET("worker/jobs/{jobId}/review-queue")
+    suspend fun workerReviewQueue(@Path("jobId") jobId: String): ApiEnvelope<ReviewQueueResponse>
+
+    @POST("worker/submissions/{submissionId}/review")
+    suspend fun reviewSubmission(
+        @Path("submissionId") submissionId: String,
+        @Body body: ReviewSubmissionBody,
+    ): ApiEnvelope<ReviewSubmissionResult>
+
+    @GET("worker/submissions/me")
+    suspend fun workerSubmissions(): ApiEnvelope<WorkerSubmissionsResponse>
+
+    @POST("telemetry/quality-check")
+    suspend fun sendQualityTelemetry(@Body body: QualityCheckResult): ApiEnvelope<QualityTelemetryResult>
 }
 
 /** A blocking, interceptor-free endpoint used only by OkHttp's refresh authenticator. */
@@ -251,3 +269,19 @@ data class CreateJobBody(
     val idempotency_key: String,
     val subtasks: List<CreateSubtaskBody> = emptyList(),
 )
+
+@Serializable
+data class ReviewSubmissionBody(
+    val decision: String,
+    val note: String? = null,
+)
+
+@Serializable
+data class ReviewSubmissionResult(
+    val success: Boolean,
+    val decision: String,
+    val submissionId: String,
+)
+
+@Serializable
+data class QualityTelemetryResult(val received: Boolean)

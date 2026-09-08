@@ -274,3 +274,97 @@ export function ok<T>(data: T): ApiResponse<T> {
 export function fail(code: string, message: string): ApiResponse<never> {
   return { success: false, data: null, error: { code, message } };
 }
+
+// Revision 2 Specification Contracts
+export type WorkerCapacityMode = "single" | "capped" | "unlimited";
+export type UnitOfWorkKind = "page" | "item" | "location" | "freeform";
+
+export type JobCapacity = {
+  mode: WorkerCapacityMode;
+  maxWorkers?: number | null;
+};
+
+export type UnitOfWork = {
+  kind: UnitOfWorkKind;
+  totalUnits?: number;
+};
+
+export type WorkerRole = "collectionist" | "correctionist";
+
+export type JobAssignment = {
+  id: string;
+  jobId: string;
+  workerId: string;
+  role: WorkerRole;
+  acceptedAt: Date | string;
+  status: "active" | "submitted" | "withdrawn" | "removed";
+  unitsClaimed?: string[];
+};
+
+export type ReviewDecision = "approve" | "redo" | "reject";
+export type ReviewerRole = "correctionist" | "client" | "admin";
+
+export type QualityCheckMetric = {
+  passed: boolean;
+  score: number;
+  message?: string;
+};
+
+export type QualityCheckResult = {
+  passed: boolean;
+  checks: {
+    edgeCoverage: QualityCheckMetric;
+    sharpness: QualityCheckMetric;
+    exposure: QualityCheckMetric;
+  };
+  overallScore: number;
+  engineVersion: string;
+  ranOnDevice: boolean;
+  checkedAt: string;
+};
+
+export type OCRResult = {
+  engineVersion?: string;
+  text: string;
+  confidence: number;
+  language?: string;
+  generatedAt?: string;
+};
+
+export type ReviewEvent = {
+  id: string;
+  submissionId: string;
+  reviewerRole: ReviewerRole;
+  reviewerId: string;
+  decision: ReviewDecision;
+  note?: string;
+  createdAt: string;
+};
+
+export type Submission = {
+  id: string;
+  jobId: string;
+  assignmentId?: string;
+  workerId: string;
+  subtaskId?: string;
+  unitRef?: string;
+  mediaUrl: string;
+  thumbnailUrl?: string;
+  ocrResult?: OCRResult;
+  ocrStatus: "processing" | "ready" | "failed";
+  ocrSnippet?: string;
+  qualityCheck?: QualityCheckResult;
+  status: "pending_review" | "approved" | "redo_requested" | "client_approved" | "client_rejected";
+  reviewHistory: ReviewEvent[];
+  submittedAt: string;
+};
+
+export type JobReviewSummary = {
+  totalUnits: number;
+  collected: number;
+  correctionistApproved: number;
+  clientApproved: number;
+  clientRejected: number;
+  redoRequested: number;
+};
+

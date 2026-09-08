@@ -25,6 +25,12 @@ import com.networkpeer.mobile.core.model.WalletResponse
 import com.networkpeer.mobile.core.model.WorkStatusResult
 import com.networkpeer.mobile.core.model.WorkerJobDetail
 import com.networkpeer.mobile.core.model.WorkerSyncPage
+import com.networkpeer.mobile.core.model.QualityCheckResult
+import com.networkpeer.mobile.core.model.ReviewQueueResponse
+import com.networkpeer.mobile.core.model.WorkerSubmissionsResponse
+import com.networkpeer.mobile.core.network.QualityTelemetryResult
+import com.networkpeer.mobile.core.network.ReviewSubmissionBody
+import com.networkpeer.mobile.core.network.ReviewSubmissionResult
 import com.networkpeer.mobile.core.model.requireData
 import com.networkpeer.mobile.core.network.ConfirmEvidenceBody
 import com.networkpeer.mobile.core.network.CancelClientJobBody
@@ -182,6 +188,22 @@ class MarketplaceRepository(
 
     suspend fun deregisterDevice(token: String): com.networkpeer.mobile.core.model.DeviceDeregistration = apiCall {
         api.deregisterDevice(DeregisterDeviceBody(token))
+    }
+
+    suspend fun workerReviewQueue(jobId: String): ReviewQueueResponse = apiCall {
+        api.workerReviewQueue(jobId)
+    }
+
+    suspend fun reviewSubmission(submissionId: String, decision: String, note: String? = null): ReviewSubmissionResult = apiCall {
+        api.reviewSubmission(submissionId, ReviewSubmissionBody(decision, note))
+    }
+
+    suspend fun workerSubmissions(): WorkerSubmissionsResponse = apiCall {
+        api.workerSubmissions()
+    }
+
+    suspend fun sendQualityTelemetry(checkResult: QualityCheckResult): QualityTelemetryResult = apiCall {
+        api.sendQualityTelemetry(checkResult)
     }
 
     private companion object {

@@ -330,8 +330,20 @@ function ReviewPage() {
               </button>
             </div>
             <div className="p-4">
-              <SubmissionReviewPane evidence={evidence} onOpenEvidence={openEvidence} />
+              <SubmissionReviewPane
+                evidence={evidence}
+                mode="client"
+                onOpenEvidence={openEvidence}
+                onDecide={async (submissionId, decision, note) => {
+                  if (decision === "approve") {
+                    await approveJob();
+                  } else {
+                    await api.submitReview(submissionId, decision, note, "client");
+                  }
+                }}
+              />
             </div>
+
           </div>
         </div>
       )}
