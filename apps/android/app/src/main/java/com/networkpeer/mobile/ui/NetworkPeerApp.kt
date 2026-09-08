@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.outlined.BusinessCenter
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Engineering
+import androidx.compose.material.icons.outlined.FlashOn
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material.icons.outlined.Refresh
@@ -39,6 +41,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -74,10 +77,7 @@ import com.networkpeer.mobile.ui.theme.BrandSkyText
 import com.networkpeer.mobile.ui.theme.BrandSkyVibrant
 import com.networkpeer.mobile.ui.theme.BrandTeal
 import com.networkpeer.mobile.ui.theme.Danger
-import com.networkpeer.mobile.ui.theme.Slate200
 import com.networkpeer.mobile.ui.theme.Slate400
-import com.networkpeer.mobile.ui.theme.Slate500
-import com.networkpeer.mobile.ui.theme.Slate900
 import com.networkpeer.mobile.ui.theme.Success
 import com.networkpeer.mobile.ui.theme.Warning
 import kotlinx.coroutines.launch
@@ -134,13 +134,37 @@ private fun RoleSelectionCard(
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
+    val isDark = isSystemInDarkTheme()
+    val cardBg = if (selected) {
+        if (isDark) Color(0xFF0369A1).copy(alpha = 0.35f) else BrandSkyContainer.copy(alpha = 0.7f)
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    val cardBorder = if (selected) BrandSkyPrimary else MaterialTheme.colorScheme.outline
+    val iconBg = if (selected) {
+        if (isDark) BrandSkyPrimary.copy(alpha = 0.3f) else BrandSkyContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val iconTint = if (selected) {
+        if (isDark) BrandSkyLight else BrandSkyPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val titleColor = if (selected) {
+        if (isDark) Color.White else BrandSkyText
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    val descColor = MaterialTheme.colorScheme.onSurfaceVariant
+
     Surface(
         modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        color = if (selected) BrandSkySoft else MaterialTheme.colorScheme.surface,
+        color = cardBg,
         border = BorderStroke(
             width = if (selected) 2.dp else 1.dp,
-            color = if (selected) BrandSkyPrimary else Slate200,
+            color = cardBorder,
         ),
         shadowElevation = if (selected) 2.dp else 0.dp,
     ) {
@@ -157,7 +181,7 @@ private fun RoleSelectionCard(
                     modifier = Modifier
                         .size(38.dp)
                         .background(
-                            color = if (selected) BrandSkyContainer else MaterialTheme.colorScheme.surfaceVariant,
+                            color = iconBg,
                             shape = RoundedCornerShape(10.dp),
                         ),
                     contentAlignment = Alignment.Center,
@@ -165,7 +189,7 @@ private fun RoleSelectionCard(
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = if (selected) BrandSkyPrimary else Slate500,
+                        tint = iconTint,
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -190,12 +214,12 @@ private fun RoleSelectionCard(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = if (selected) BrandSkyText else Slate900,
+                color = titleColor,
             )
             Text(
                 text = description,
                 style = MaterialTheme.typography.bodySmall,
-                color = Slate500,
+                color = descColor,
             )
         }
     }
@@ -268,33 +292,8 @@ private fun AuthScreen(container: AppContainer) {
     ) {
         item {
             BrandMark()
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
 
-            Surface(
-                color = BrandSkyContainer,
-                shape = RoundedCornerShape(20.dp),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.VerifiedUser,
-                        contentDescription = null,
-                        tint = BrandSkyPrimary,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(R.string.auth_badge),
-                        color = BrandSkyPrimary,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(10.dp))
             Text(
                 text = stringResource(R.string.auth_headline),
                 style = MaterialTheme.typography.headlineMedium,
@@ -313,7 +312,7 @@ private fun AuthScreen(container: AppContainer) {
             Card(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, Slate200),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
             ) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -321,7 +320,7 @@ private fun AuthScreen(container: AppContainer) {
                         text = stringResource(R.string.role_prompt),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
-                        color = Slate900,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
 
                     Row(
@@ -351,7 +350,7 @@ private fun AuthScreen(container: AppContainer) {
                             text = stringResource(R.string.phone_number),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
-                            color = Slate900,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
 
                         Row(
@@ -361,8 +360,8 @@ private fun AuthScreen(container: AppContainer) {
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surface,
-                                border = BorderStroke(1.dp, Slate200),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                                 modifier = Modifier.height(56.dp),
                             ) {
                                 Box(
@@ -373,7 +372,7 @@ private fun AuthScreen(container: AppContainer) {
                                         text = stringResource(R.string.phone_prefix),
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = Slate900,
+                                        color = MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
                             }
@@ -391,12 +390,6 @@ private fun AuthScreen(container: AppContainer) {
                                     error = null
                                 },
                                 modifier = Modifier.weight(1f),
-                                placeholder = {
-                                    Text(
-                                        text = stringResource(R.string.phone_placeholder),
-                                        color = Slate400,
-                                    )
-                                },
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.Outlined.Phone,
@@ -408,6 +401,12 @@ private fun AuthScreen(container: AppContainer) {
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = BrandSkyPrimary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                ),
                                 isError = error != null,
                             )
                         }
@@ -415,30 +414,57 @@ private fun AuthScreen(container: AppContainer) {
                         Text(
                             text = stringResource(R.string.phone_helper),
                             style = MaterialTheme.typography.bodySmall,
-                            color = Slate500,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
 
                     if (otpRequested) {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                text = stringResource(R.string.verification_code),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Slate900,
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.verification_code),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                TextButton(
+                                    onClick = {
+                                        otp = "888888"
+                                        error = null
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.FlashOn,
+                                        contentDescription = null,
+                                        tint = BrandSkyPrimary,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        stringResource(R.string.use_demo_code),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrandSkyPrimary,
+                                    )
+                                }
+                            }
 
                             OutlinedTextField(
                                 value = otp,
                                 onValueChange = {
-                                    otp = it.filter(Char::isDigit).take(8)
+                                    otp = it.filter(Char::isDigit).take(6)
                                     error = null
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 placeholder = {
                                     Text(
-                                        text = "Enter 4-8 digit OTP",
-                                        color = Slate400,
+                                        text = "Enter 6-digit code (888888)",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                                     )
                                 },
                                 leadingIcon = {
@@ -449,24 +475,15 @@ private fun AuthScreen(container: AppContainer) {
                                         modifier = Modifier.size(20.dp),
                                     )
                                 },
-                                trailingIcon = {
-                                    if (!devOtp.isNullOrBlank() && otp != devOtp) {
-                                        TextButton(
-                                            onClick = { otp = devOtp!! },
-                                            contentPadding = PaddingValues(horizontal = 8.dp),
-                                        ) {
-                                            Text(
-                                                "Auto-fill",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = BrandSkyPrimary,
-                                            )
-                                        }
-                                    }
-                                },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                                 shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = BrandSkyPrimary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                ),
                             )
 
                             Row(
@@ -515,6 +532,10 @@ private fun AuthScreen(container: AppContainer) {
                                     if (otpRequested) {
                                         if (otp.isBlank()) {
                                             error = context.getString(R.string.otp_required_error)
+                                            return@launch
+                                        }
+                                        if (otp.length != 6) {
+                                            error = context.getString(R.string.otp_digits_error)
                                             return@launch
                                         }
                                         container.authRepository.verifyOtp(
@@ -630,14 +651,6 @@ internal fun BrandMark(compact: Boolean = false) {
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
             )
-            if (!compact) {
-                Text(
-                    text = stringResource(R.string.brand_tagline),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
         }
     }
 }
@@ -726,7 +739,13 @@ internal fun statusLabel(status: JobStatus): String = stringResource(
 )
 
 internal fun friendlyError(context: Context, failure: Throwable): String = when (failure) {
-    is NetworkPeerApiException -> "${failure.code}: ${failure.message}"
+    is NetworkPeerApiException -> {
+        if (failure.statusCode == 401 || failure.code.contains("401") || failure.code.contains("OTP_INVALID") || failure.message.contains("401", ignoreCase = true)) {
+            "Invalid verification code. Please check your SMS or tap 'Demo code: 888888' above."
+        } else {
+            "${failure.code}: ${failure.message}"
+        }
+    }
     else -> context.getString(R.string.generic_request_error)
 }
 
