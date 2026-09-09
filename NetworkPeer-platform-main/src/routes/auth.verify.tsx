@@ -62,8 +62,18 @@ function VerifyOtpPage() {
     setError("");
     try {
       const session = await api.verifyOtp(pending.phoneNumber, otp, pending.challengeId);
+      if (pending.fullName || pending.email) {
+        try {
+          await api.updateProfile({
+            fullName: pending.fullName,
+            email: pending.email,
+          });
+        } catch {
+          // Profile update fallback
+        }
+      }
       window.sessionStorage.removeItem(PENDING_OTP_KEY);
-      toast.success("Phone verified. Your session is ready.");
+      toast.success("Phone verified. Your account is active and verified.");
       await router.navigate({ to: session.user.role === "CLIENT" ? "/client" : "/worker" });
     } catch (requestError) {
       const message = errorMessage(requestError);

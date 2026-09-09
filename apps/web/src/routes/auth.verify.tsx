@@ -62,22 +62,14 @@ function VerifyOtpPage() {
     setError("");
     try {
       const session = await api.verifyOtp(pending.phoneNumber, otp, pending.challengeId);
-      if (pending.fullName || pending.email || pending.selfieBase64) {
+      if (pending.fullName || pending.email) {
         try {
           await api.updateProfile({
             fullName: pending.fullName,
             email: pending.email,
-            avatar_url: pending.selfieBase64,
           });
         } catch {
           // Profile update fallback
-        }
-      }
-      if (session.user.role === "WORKER" && pending.selfieBase64) {
-        try {
-          await api.verifyWorkerSelfie({ selfie_base64: pending.selfieBase64 });
-        } catch {
-          // Selfie verify fallback
         }
       }
       window.sessionStorage.removeItem(PENDING_OTP_KEY);

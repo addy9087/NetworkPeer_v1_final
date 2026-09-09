@@ -33,7 +33,6 @@ export type PendingOtp = {
   developmentOtp?: string;
   fullName?: string;
   email?: string;
-  selfieBase64?: string;
 };
 
 export const PENDING_OTP_KEY = "networkpeer-pending-otp";
@@ -55,7 +54,6 @@ function AuthPage() {
   const [phone, setPhone] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [selfie, setSelfie] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -90,7 +88,6 @@ function AuthPage() {
         developmentOtp: result.otp,
         fullName: mode === "register" ? fullName.trim() : undefined,
         email: mode === "register" && email.trim() ? email.trim() : undefined,
-        selfieBase64: mode === "register" && selfie ? selfie : undefined,
       };
       window.sessionStorage.setItem(PENDING_OTP_KEY, JSON.stringify(pending));
       toast.success(result.otp ? `Development OTP: ${result.otp}` : "Verification code sent");
@@ -204,53 +201,6 @@ function AuthPage() {
                 />
               </div>
             </label>
-
-            {role === "WORKER" && (
-              <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold">Quick Selfie Verification</p>
-                    <p className="text-xs text-muted-foreground">Take a quick selfie to activate instant job discovery.</p>
-                  </div>
-                  <Camera className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex items-center gap-3">
-                  {selfie ? (
-                    <div className="relative h-16 w-16 overflow-hidden rounded-full border-2 border-primary">
-                      <img src={selfie} alt="Selfie" className="h-full w-full object-cover" />
-                    </div>
-                  ) : (
-                    <label className="press inline-flex items-center gap-2 rounded-xl border border-dashed border-border bg-muted/60 px-4 py-2.5 text-xs font-semibold cursor-pointer hover:border-primary/50">
-                      <Camera className="h-4 w-4 text-primary" />
-                      <span>Take quick selfie</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="user"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = () => setSelfie(reader.result as string);
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
-                  )}
-                  {selfie && (
-                    <button
-                      type="button"
-                      onClick={() => setSelfie(null)}
-                      className="text-xs text-muted-foreground hover:text-destructive underline"
-                    >
-                      Retake
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
           </>
         )}
 

@@ -551,4 +551,17 @@ data class UpdateProfileBody(
     @SerialName("is_available") val isAvailable: Boolean? = null,
 )
 
+fun Job.toWorkerJobSummary(): WorkerJobSummary = WorkerJobSummary(
+    id = id,
+    title = title,
+    description = description,
+    category = category,
+    priority = priority,
+    budget_cents = budget_cents,
+    currency = currency,
+    scheduled_at = scheduled_at,
+    created_at = created_at,
+    distance_band = "1_TO_5_KM",
+)
+
 

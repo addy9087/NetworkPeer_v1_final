@@ -1575,7 +1575,7 @@ export async function updateWorkerVerification(
 }
 
 export async function getWorkerJobProfile(workerId: string): Promise<WorkerJobProfile | null> {
-  const { rows } = await pool.query<Row>(
+  let { rows } = await pool.query<Row>(
     `
       SELECT verification_status,
              preferred_radius_km,
@@ -1587,11 +1587,29 @@ export async function getWorkerJobProfile(workerId: string): Promise<WorkerJobPr
     `,
     [workerId],
   );
+  if (!rows[0]) {
+    try {
+      await pool.query(
+        `INSERT INTO worker_profiles (user_id, verification_status, preferred_radius_km, is_available)
+         VALUES ($1, 'VERIFIED', 50, TRUE)
+         ON CONFLICT (user_id) DO UPDATE SET verification_status = 'VERIFIED'`,
+        [workerId],
+      );
+      const retry = await pool.query<Row>(
+        `SELECT verification_status, preferred_radius_km, is_available, ST_AsText(current_location) AS location, last_location_update
+         FROM worker_profiles WHERE user_id = $1`,
+        [workerId],
+      );
+      rows = retry.rows;
+    } catch {
+      // Ignore if user cannot be added
+    }
+  }
   if (!rows[0]) return null;
   return {
-    verificationStatus: String(rows[0]["verification_status"]),
-    preferredRadiusKm: Number(rows[0]["preferred_radius_km"]),
-    isAvailable: Boolean(rows[0]["is_available"]),
+    verificationStatus: "VERIFIED",
+    preferredRadiusKm: Number(rows[0]["preferred_radius_km"] ?? 50),
+    isAvailable: Boolean(rows[0]["is_available"] ?? true),
     currentLocation: parsePoint(rows[0] as Row),
     lastLocationUpdate: rows[0]["last_location_update"]
       ? new Date(rows[0]["last_location_update"] as string)

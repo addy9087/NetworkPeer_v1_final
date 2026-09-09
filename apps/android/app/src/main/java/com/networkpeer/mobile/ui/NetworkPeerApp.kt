@@ -37,7 +37,6 @@ import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material.icons.outlined.Work
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Email
-import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -243,7 +242,6 @@ private fun AuthScreen(container: AppContainer) {
     var isRegisterMode by rememberSaveable { mutableStateOf(true) }
     var fullName by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
-    var selfieCaptured by rememberSaveable { mutableStateOf(false) }
     var phone by rememberSaveable { mutableStateOf("") }
     var otp by rememberSaveable { mutableStateOf("") }
     var roleName by rememberSaveable { mutableStateOf(UserRole.CLIENT.name) }
@@ -462,49 +460,6 @@ private fun AuthScreen(container: AppContainer) {
                                     unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                                 ),
                             )
-                        }
-
-                        if (role == UserRole.WORKER) {
-                            Card(
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                                border = BorderStroke(1.dp, if (selfieCaptured) BrandTeal else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                        Icon(
-                                            imageVector = if (selfieCaptured) Icons.Outlined.CheckCircle else Icons.Outlined.PhotoCamera,
-                                            contentDescription = null,
-                                            tint = if (selfieCaptured) BrandTeal else BrandSkyPrimary,
-                                            modifier = Modifier.size(24.dp),
-                                        )
-                                        Spacer(Modifier.width(10.dp))
-                                        Column {
-                                            Text(
-                                                text = if (selfieCaptured) stringResource(R.string.selfie_verified) else stringResource(R.string.worker_selfie_title),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = if (selfieCaptured) BrandTeal else MaterialTheme.colorScheme.onSurface,
-                                            )
-                                            Text(
-                                                text = stringResource(R.string.worker_selfie_desc),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
-                                    }
-                                    OutlinedButton(
-                                        onClick = { selfieCaptured = !selfieCaptured },
-                                        shape = RoundedCornerShape(8.dp),
-                                    ) {
-                                        Text(if (selfieCaptured) "Retake" else stringResource(R.string.take_selfie))
-                                    }
-                                }
-                            }
                         }
                     }
 

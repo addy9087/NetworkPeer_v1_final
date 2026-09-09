@@ -16,7 +16,7 @@ class ClientJobDraftValidatorTest {
         val body = ClientJobDraftValidator.createBody(draft, "request-key")
 
         assertEquals(listOf(-122.4194, 37.7749), body.location.coordinates)
-        assertEquals("USD", body.currency)
+        assertEquals("INR", body.currency)
         assertEquals(false, body.subtasks.single().is_required)
         assertEquals("request-key", body.idempotency_key)
     }

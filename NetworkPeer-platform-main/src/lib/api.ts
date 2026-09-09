@@ -700,7 +700,34 @@ export const api = {
   updateProfile(updates: UpdateProfileInput): Promise<UserProfile> {
     return request("/auth/profile", {
       method: "PATCH",
-      body: JSON.stringify(updates),
+      body: JSON.stringify({
+        ...(updates.fullName !== undefined ? { full_name: updates.fullName } : {}),
+        ...(updates.email !== undefined ? { email: updates.email } : {}),
+        ...(updates.avatar_url !== undefined ? { avatar_url: updates.avatar_url } : {}),
+        ...(updates.skills !== undefined ? { skills: updates.skills } : {}),
+        ...(updates.preferred_radius_km !== undefined ? { preferred_radius_km: updates.preferred_radius_km } : {}),
+        ...(updates.is_available !== undefined ? { is_available: updates.is_available } : {}),
+      }),
+    });
+  },
+  workerJobs(params: { page?: number; perPage?: number } = {}): Promise<{
+    items: WorkerJobSummary[];
+    page: number;
+    perPage: number;
+    total: number;
+    has_more: boolean;
+    next_page: number | null;
+  }> {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.perPage) query.set("per_page", String(params.perPage));
+    const qs = query.toString();
+    return request(`/worker/jobs${qs ? `?${qs}` : ""}`);
+  },
+  verifyWorkerSelfie(selfieData: { selfie_url?: string; selfie_base64?: string }): Promise<{ verified: boolean }> {
+    return request("/worker/verify-selfie", {
+      method: "POST",
+      body: JSON.stringify(selfieData),
     });
   },
 };
@@ -727,6 +754,7 @@ export type UserProfile = {
 };
 
 export type UpdateProfileInput = {
+  fullName?: string;
   email?: string | null;
   avatar_url?: string | null;
   skills?: string[];

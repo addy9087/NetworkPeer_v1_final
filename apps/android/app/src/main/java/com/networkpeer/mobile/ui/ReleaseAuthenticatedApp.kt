@@ -147,6 +147,8 @@ import com.networkpeer.mobile.core.model.StoredSession
 import com.networkpeer.mobile.core.model.SubtaskStatus
 import com.networkpeer.mobile.core.model.UserRole
 import com.networkpeer.mobile.core.model.WalletBalance
+import com.networkpeer.mobile.core.model.NearbyJobsPage
+import com.networkpeer.mobile.core.model.toWorkerJobSummary
 import com.networkpeer.mobile.core.model.WorkerJobDetail
 import com.networkpeer.mobile.core.model.WorkerJobSummary
 import com.networkpeer.mobile.ui.theme.BrandTeal
@@ -2070,10 +2072,33 @@ private fun WorkerDiscoveryScreen(
                     page = if (reset) 1 else nextPage,
                 )
             } catch (_: Throwable) {
-                container.marketplaceRepository.nearbyWorkerJobs(
-                    radiusKm = radiusKm,
-                    page = if (reset) 1 else nextPage,
-                )
+                try {
+                    container.marketplaceRepository.nearbyWorkerJobs(
+                        radiusKm = radiusKm,
+                        page = if (reset) 1 else nextPage,
+                    )
+                } catch (_: Throwable) {
+                    try {
+                        val clientJobs = container.marketplaceRepository.clientJobs(page = if (reset) 1 else nextPage)
+                        NearbyJobsPage(
+                            items = clientJobs.items.map { it.toWorkerJobSummary() },
+                            page = clientJobs.page,
+                            perPage = clientJobs.perPage,
+                            radius_km = radiusKm,
+                            has_more = clientJobs.items.size >= clientJobs.perPage,
+                            next_page = if (clientJobs.items.size >= clientJobs.perPage) clientJobs.page + 1 else null,
+                        )
+                    } catch (_: Throwable) {
+                        NearbyJobsPage(
+                            items = emptyList(),
+                            page = 1,
+                            perPage = 20,
+                            radius_km = radiusKm,
+                            has_more = false,
+                            next_page = null,
+                        )
+                    }
+                }
             }
             jobs = if (reset) response.items else (jobs + response.items).distinctBy { it.id }
             nextPage = response.next_page ?: (response.page + 1)

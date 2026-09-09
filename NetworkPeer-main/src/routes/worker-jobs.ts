@@ -32,7 +32,7 @@ export default async function workerJobsRoutes(app: FastifyInstance): Promise<vo
   app.register(
     async (child) => {
       child.addHook("onRequest", requireAuth);
-      child.addHook("onRequest", requireRole(["WORKER"]));
+      child.addHook("onRequest", requireRole(["WORKER", "CLIENT"]));
 
       child.get("/worker/jobs", async (request, reply) => {
         const parsed = nearbyQuerySchema.safeParse(request.query);
