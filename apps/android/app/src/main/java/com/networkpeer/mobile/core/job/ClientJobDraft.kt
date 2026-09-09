@@ -20,7 +20,7 @@ data class ClientJobDraft(
     val description: String = "",
     val category: String = "",
     val budgetCents: String = "",
-    val currency: String = "USD",
+    val currency: String = "INR",
     val latitude: String = "",
     val longitude: String = "",
     val address: String = "",

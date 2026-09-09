@@ -543,6 +543,7 @@ data class UserProfile(
 
 @Serializable
 data class UpdateProfileBody(
+    @SerialName("full_name") val fullName: String? = null,
     val email: String? = null,
     @SerialName("avatar_url") val avatarUrl: String? = null,
     val skills: List<String>? = null,

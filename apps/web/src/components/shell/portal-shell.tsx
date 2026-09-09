@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { UserNavMenu } from "@/components/shell/user-nav-menu";
 import { AnonymousBadge } from "@/components/marketplace/primitives";
 import { authSession } from "@/lib/auth-session";
 import { api } from "@/lib/api";
@@ -155,69 +156,7 @@ export function PortalShell({
               <Bell className="h-4 w-4" />
               <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-destructive" />
             </Link>
-            <ThemeToggle />
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setUserMenuOpen((prev) => !prev)}
-                className="press grid h-10 w-10 place-items-center rounded-full bg-primary-soft text-base font-semibold text-primary shadow-xs ring-2 ring-transparent transition-all hover:ring-primary/40 focus:outline-none focus:ring-primary"
-                aria-label="User menu"
-                aria-expanded={userMenuOpen}
-              >
-                {identity[0]}
-              </button>
-              {userMenuOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setUserMenuOpen(false)}
-                  />
-                  <div className="animate-rise absolute right-0 top-12 z-50 w-56 rounded-2xl border border-border bg-card p-1.5 shadow-lift">
-                    <div className="border-b border-border px-3 py-2 text-sm">
-                      <p className="font-semibold text-foreground">Signed in as {identity}</p>
-                      <p className="text-xs text-muted-foreground">Marketplace Account</p>
-                    </div>
-                    <div className="py-1">
-                      <Link
-                        to={identity === "Worker" ? "/worker" : "/client"}
-                        onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
-                      >
-                        <LayoutDashboard className="h-4 w-4 text-muted-foreground" />
-                        Dashboard
-                      </Link>
-                      <Link
-                        to={identity === "Worker" ? "/worker/profile" : "/client/profile"}
-                        onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
-                      >
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        View Profile
-                      </Link>
-                      <Link
-                        to={identity === "Worker" ? "/worker/profile" : "/client/profile"}
-                        search={{ edit: "true" } as any}
-                        onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
-                      >
-                        <Settings className="h-4 w-4 text-muted-foreground" />
-                        Edit Profile
-                      </Link>
-                    </div>
-                    <div className="border-t border-border pt-1">
-                      <button
-                        type="button"
-                        onClick={handleSignOut}
-                        className="press flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10"
-                      >
-                        <LogOut className="h-4 w-4" />
-                        Sign Out
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
+            <UserNavMenu identity={identity} />
           </div>
         </header>
 

@@ -1,11 +1,11 @@
 import { createFileRoute, Outlet, Link, useRouterState } from "@tanstack/react-router";
-import { Home, User, Wallet, LogOut, LayoutDashboard, Settings } from "lucide-react";
-import { useState } from "react";
+import { Home, User, Wallet } from "lucide-react";
+import { useEffect } from "react";
 
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { UserNavMenu } from "@/components/shell/user-nav-menu";
 import { authSession } from "@/lib/auth-session";
-import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/worker")({
   component: WorkerLayout,
@@ -19,17 +19,12 @@ const tabs = [
 
 function WorkerLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
-  const handleSignOut = async () => {
-    try {
-      await api.logout();
-    } catch {
-      // ignore
+  useEffect(() => {
+    if (!authSession.get()) {
+      window.location.href = "/auth";
     }
-    authSession.clear();
-    window.location.href = "/auth";
-  };
+  }, []);
 
   return (
     <div className="worker-portal-container min-h-screen bg-muted/40 px-3 py-3 sm:px-6 sm:py-6">
@@ -51,67 +46,7 @@ function WorkerLayout() {
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span className="h-2 w-2 rounded-full bg-success" /> Live
               </span>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setUserMenuOpen((prev) => !prev)}
-                  className="press grid h-8 w-8 place-items-center rounded-full bg-primary-soft text-xs font-semibold text-primary shadow-xs ring-1 ring-border transition-all hover:ring-primary/40 focus:outline-none focus:ring-primary"
-                  aria-label="User menu"
-                >
-                  W
-                </button>
-                {userMenuOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setUserMenuOpen(false)}
-                    />
-                    <div className="animate-rise absolute right-0 top-10 z-50 w-52 rounded-2xl border border-border bg-card p-1.5 shadow-lift">
-                      <div className="border-b border-border px-3 py-2 text-xs">
-                        <p className="font-semibold text-foreground">Worker Account</p>
-                        <p className="text-muted-foreground">Field Operations</p>
-                      </div>
-                      <div className="py-1">
-                        <Link
-                          to="/worker"
-                          onClick={() => setUserMenuOpen(false)}
-                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
-                        >
-                          <LayoutDashboard className="h-3.5 w-3.5 text-muted-foreground" />
-                          Dashboard
-                        </Link>
-                        <Link
-                          to="/worker/profile"
-                          onClick={() => setUserMenuOpen(false)}
-                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
-                        >
-                          <User className="h-3.5 w-3.5 text-muted-foreground" />
-                          View Profile
-                        </Link>
-                        <Link
-                          to="/worker/profile"
-                          search={{ edit: "true" } as any}
-                          onClick={() => setUserMenuOpen(false)}
-                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
-                        >
-                          <Settings className="h-3.5 w-3.5 text-muted-foreground" />
-                          Edit Profile
-                        </Link>
-                      </div>
-                      <div className="border-t border-border pt-1">
-                        <button
-                          type="button"
-                          onClick={handleSignOut}
-                          className="press flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
-                        >
-                          <LogOut className="h-3.5 w-3.5" />
-                          Sign Out
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
+              <UserNavMenu identity="Worker" />
             </div>
           </div>
 

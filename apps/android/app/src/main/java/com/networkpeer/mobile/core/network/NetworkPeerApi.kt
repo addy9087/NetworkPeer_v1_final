@@ -112,6 +112,12 @@ interface NetworkPeerApi {
     @POST("worker/location")
     suspend fun updateWorkerLocation(@Body body: WorkerLocationBody): ApiEnvelope<WorkerLocationResult>
 
+    @GET("worker/jobs")
+    suspend fun allWorkerJobs(
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 20,
+    ): ApiEnvelope<NearbyJobsPage>
+
     @GET("worker/jobs/nearby")
     suspend fun nearbyWorkerJobs(
         @Query("radius_km") radiusKm: Int? = null,
@@ -268,7 +274,7 @@ data class CreateJobBody(
     val description: String,
     val category: String,
     val budget_cents: Long,
-    val currency: String = "USD",
+    val currency: String = "INR",
     val location: Point,
     val address: String? = null,
     val scheduled_at: String? = null,

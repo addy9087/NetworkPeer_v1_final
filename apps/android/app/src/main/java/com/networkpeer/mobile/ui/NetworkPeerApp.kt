@@ -35,6 +35,10 @@ import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material.icons.outlined.Work
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -43,11 +47,16 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.draw.clip
+import com.networkpeer.mobile.core.model.UpdateProfileBody
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -231,6 +240,10 @@ private fun RoleSelectionCard(
 @Composable
 private fun AuthScreen(container: AppContainer) {
     val context = LocalContext.current
+    var isRegisterMode by rememberSaveable { mutableStateOf(true) }
+    var fullName by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var selfieCaptured by rememberSaveable { mutableStateOf(false) }
     var phone by rememberSaveable { mutableStateOf("") }
     var otp by rememberSaveable { mutableStateOf("") }
     var roleName by rememberSaveable { mutableStateOf(UserRole.CLIENT.name) }
@@ -268,6 +281,10 @@ private fun AuthScreen(container: AppContainer) {
     }
 
     suspend fun requestCode() {
+        if (isRegisterMode && fullName.trim().isBlank()) {
+            error = context.getString(R.string.full_name_required)
+            return
+        }
         val rawDigits = phone.filter(Char::isDigit)
         if (rawDigits.length < 10 && !phone.trim().startsWith("+")) {
             error = context.getString(R.string.phone_invalid_error)
@@ -316,14 +333,14 @@ private fun AuthScreen(container: AppContainer) {
             Spacer(Modifier.height(16.dp))
 
             Text(
-                text = stringResource(R.string.auth_headline),
+                text = if (isRegisterMode) stringResource(R.string.register_title) else stringResource(R.string.sign_in_title),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = stringResource(R.string.auth_body),
+                text = if (isRegisterMode) stringResource(R.string.register_subtitle) else stringResource(R.string.sign_in_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -337,6 +354,23 @@ private fun AuthScreen(container: AppContainer) {
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
             ) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    TabRow(
+                        selectedTabIndex = if (isRegisterMode) 0 else 1,
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.clip(RoundedCornerShape(12.dp)),
+                    ) {
+                        Tab(
+                            selected = isRegisterMode,
+                            onClick = { if (!isRegisterMode) { isRegisterMode = true; resetOtpRequest() } },
+                            text = { Text(stringResource(R.string.register_tab), fontWeight = FontWeight.SemiBold) },
+                        )
+                        Tab(
+                            selected = !isRegisterMode,
+                            onClick = { if (isRegisterMode) { isRegisterMode = false; resetOtpRequest() } },
+                            text = { Text(stringResource(R.string.sign_in_tab), fontWeight = FontWeight.SemiBold) },
+                        )
+                    }
+
                     Text(
                         text = stringResource(R.string.role_prompt),
                         style = MaterialTheme.typography.labelLarge,
@@ -364,6 +398,114 @@ private fun AuthScreen(container: AppContainer) {
                             icon = Icons.Outlined.Engineering,
                             onClick = { roleName = UserRole.WORKER.name },
                         )
+                    }
+
+                    if (isRegisterMode) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "${stringResource(R.string.full_name)} *",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            OutlinedTextField(
+                                value = fullName,
+                                onValueChange = { fullName = it; error = null },
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text("e.g. Rahul Sharma") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Person,
+                                        contentDescription = null,
+                                        tint = BrandSkyPrimary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = BrandSkyPrimary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                ),
+                            )
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = stringResource(R.string.email_optional),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            OutlinedTextField(
+                                value = email,
+                                onValueChange = { email = it; error = null },
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text("e.g. rahul@example.com") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Email,
+                                        contentDescription = null,
+                                        tint = BrandSkyPrimary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = BrandSkyPrimary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                ),
+                            )
+                        }
+
+                        if (role == UserRole.WORKER) {
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                border = BorderStroke(1.dp, if (selfieCaptured) BrandTeal else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        Icon(
+                                            imageVector = if (selfieCaptured) Icons.Outlined.CheckCircle else Icons.Outlined.PhotoCamera,
+                                            contentDescription = null,
+                                            tint = if (selfieCaptured) BrandTeal else BrandSkyPrimary,
+                                            modifier = Modifier.size(24.dp),
+                                        )
+                                        Spacer(Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = if (selfieCaptured) stringResource(R.string.selfie_verified) else stringResource(R.string.worker_selfie_title),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = if (selfieCaptured) BrandTeal else MaterialTheme.colorScheme.onSurface,
+                                            )
+                                            Text(
+                                                text = stringResource(R.string.worker_selfie_desc),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                    OutlinedButton(
+                                        onClick = { selfieCaptured = !selfieCaptured },
+                                        shape = RoundedCornerShape(8.dp),
+                                    ) {
+                                        Text(if (selfieCaptured) "Retake" else stringResource(R.string.take_selfie))
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -549,6 +691,16 @@ private fun AuthScreen(container: AppContainer) {
                                             otp.trim(),
                                             challengeId,
                                         )
+                                        if (isRegisterMode && fullName.isNotBlank()) {
+                                            runCatching {
+                                                container.authRepository.updateProfile(
+                                                    UpdateProfileBody(
+                                                        fullName = fullName.trim(),
+                                                        email = email.trim().ifBlank { null },
+                                                    )
+                                                )
+                                            }
+                                        }
                                     } else {
                                         requestCode()
                                     }
@@ -567,9 +719,10 @@ private fun AuthScreen(container: AppContainer) {
                             containerColor = Color.Transparent,
                         ),
                         contentPadding = PaddingValues(0.dp),
-                        enabled = phone.isNotBlank() && (!otpRequested || otp.length == 6) && !loading,
+                        enabled = (!isRegisterMode || fullName.isNotBlank()) && phone.isNotBlank() && (!otpRequested || otp.length == 6) && !loading,
                     ) {
-                        val buttonBrush = if (phone.isNotBlank() && (!otpRequested || otp.length == 6) && !loading) {
+                        val isButtonActive = (!isRegisterMode || fullName.isNotBlank()) && phone.isNotBlank() && (!otpRequested || otp.length == 6) && !loading
+                        val buttonBrush = if (isButtonActive) {
                             Brush.horizontalGradient(
                                 listOf(
                                     BrandSkyPrimary,
@@ -601,7 +754,13 @@ private fun AuthScreen(container: AppContainer) {
                                     Spacer(Modifier.width(10.dp))
                                 }
                                 Text(
-                                    text = stringResource(if (otpRequested) R.string.verify_continue else R.string.continue_to_otp),
+                                    text = if (otpRequested) {
+                                        if (isRegisterMode) stringResource(R.string.complete_registration)
+                                        else stringResource(R.string.verify_continue)
+                                    } else {
+                                        if (isRegisterMode) "Register & Send OTP"
+                                        else stringResource(R.string.continue_to_otp)
+                                    },
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
@@ -756,6 +915,9 @@ internal fun friendlyError(context: Context, failure: Throwable): String = when 
 }
 
 internal fun formatMoney(cents: Long, currency: String): String {
+    if (currency.equals("INR", ignoreCase = true)) {
+        return "₹${"%,.2f".format(Locale.US, cents / 100.0)}"
+    }
     val formatter = NumberFormat.getCurrencyInstance(Locale.getDefault())
     return runCatching {
         formatter.currency = Currency.getInstance(currency)

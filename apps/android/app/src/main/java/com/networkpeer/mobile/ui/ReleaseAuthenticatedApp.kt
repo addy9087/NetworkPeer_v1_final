@@ -63,10 +63,14 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import com.networkpeer.mobile.ui.theme.BrandSkyPrimary
 import com.networkpeer.mobile.core.model.UserProfile
 import com.networkpeer.mobile.core.model.UpdateProfileBody
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
@@ -1342,10 +1346,10 @@ private fun ClientCreateJobScreen(
     var description by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("") }
     var budgetCents by rememberSaveable { mutableStateOf("") }
-    var currency by rememberSaveable { mutableStateOf("USD") }
-    var latitude by rememberSaveable { mutableStateOf("") }
-    var longitude by rememberSaveable { mutableStateOf("") }
-    var address by rememberSaveable { mutableStateOf("") }
+    var currency by rememberSaveable { mutableStateOf("INR") }
+    var latitude by rememberSaveable { mutableStateOf("12.971599") }
+    var longitude by rememberSaveable { mutableStateOf("77.594566") }
+    var address by rememberSaveable { mutableStateOf("MG Road, Bengaluru, Karnataka") }
     var scheduledAt by rememberSaveable { mutableStateOf("") }
     var publicTitle by rememberSaveable { mutableStateOf("") }
     var publicDescription by rememberSaveable { mutableStateOf("") }
@@ -1501,6 +1505,81 @@ private fun ClientCreateJobScreen(
             }
         }
         item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val stroke = 1.dp.toPx()
+                        val gridSpacing = 24.dp.toPx()
+                        val gridColor = Color(0xFF64748B).copy(alpha = 0.15f)
+                        var x = 0f
+                        while (x < size.width) {
+                            drawLine(gridColor, androidx.compose.ui.geometry.Offset(x, 0f), androidx.compose.ui.geometry.Offset(x, size.height), strokeWidth = stroke)
+                            x += gridSpacing
+                        }
+                        var y = 0f
+                        while (y < size.height) {
+                            drawLine(gridColor, androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = stroke)
+                            y += gridSpacing
+                        }
+                    }
+                    Column(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = BrandSkyPrimary.copy(alpha = 0.2f),
+                            modifier = Modifier.size(52.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Outlined.LocationOn,
+                                    contentDescription = "Job Location Pin",
+                                    tint = BrandSkyPrimary,
+                                    modifier = Modifier.size(30.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        ) {
+                            Text(
+                                text = if (address.isNotBlank()) address else "Lat: $latitude, Lng: $longitude",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 0.dp, bottomEnd = 8.dp),
+                        color = BrandSkyPrimary,
+                        modifier = Modifier.align(Alignment.TopStart),
+                    ) {
+                        Text(
+                            text = "MAP PREVIEW · JOB LOCATION",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+        item {
             OutlinedButton(
                 onClick = {
                     val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -1512,7 +1591,7 @@ private fun ClientCreateJobScreen(
             ) {
                 Icon(Icons.Outlined.LocationOn, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.use_current_location))
+                Text("Auto-detect current location (Optional)")
             }
         }
         item {
@@ -1974,44 +2053,51 @@ private fun WorkerDiscoveryScreen(
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    suspend fun search(reset: Boolean) {
+    suspend fun loadJobs(reset: Boolean = true) {
         if (loading && !reset) return
         loading = true
         error = null
         try {
-            if (reset) {
+            try {
                 val location = container.currentOrLastLocation()
-                    ?: throw IllegalStateException(context.getString(R.string.location_permission_required))
-                container.marketplaceRepository.updateWorkerLocation(location.latitude, location.longitude)
-                reconcileSafely(container)
+                if (location != null) {
+                    container.marketplaceRepository.updateWorkerLocation(location.latitude, location.longitude)
+                    reconcileSafely(container)
+                }
+            } catch (_: Throwable) {}
+            val response = try {
+                container.marketplaceRepository.allWorkerJobs(
+                    page = if (reset) 1 else nextPage,
+                )
+            } catch (_: Throwable) {
+                container.marketplaceRepository.nearbyWorkerJobs(
+                    radiusKm = radiusKm,
+                    page = if (reset) 1 else nextPage,
+                )
             }
-            val response = container.marketplaceRepository.nearbyWorkerJobs(
-                radiusKm = radiusKm,
-                page = if (reset) 1 else nextPage,
-            )
             jobs = if (reset) response.items else (jobs + response.items).distinctBy { it.id }
-            nextPage = response.next_page ?: response.page + 1
+            nextPage = response.next_page ?: (response.page + 1)
             hasMore = response.has_more && response.next_page != null
-            if (reset) balances = container.marketplaceRepository.workerWallet().balances
-        } catch (failure: Throwable) {
-            error = if (failure is IllegalStateException && failure.message != null) {
-                failure.message!!
-            } else {
-                friendlyError(context, failure)
+            if (reset) {
+                try {
+                    balances = container.marketplaceRepository.workerWallet().balances
+                } catch (_: Throwable) {}
             }
+        } catch (failure: Throwable) {
+            error = friendlyError(context, failure)
         } finally {
             loading = false
         }
     }
 
     val requestLocation: () -> Unit = {
-        scope.launch { search(reset = true) }
+        scope.launch { loadJobs(reset = true) }
     }
     val locationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         if (grants[Manifest.permission.ACCESS_FINE_LOCATION] == true || grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true) {
             requestLocation()
         } else {
-            error = context.getString(R.string.location_permission_required)
+            scope.launch { loadJobs(reset = true) }
         }
     }
     fun beginSearch() {
@@ -2022,11 +2108,7 @@ private fun WorkerDiscoveryScreen(
     }
 
     LaunchedEffect(Unit) {
-        try {
-            balances = container.marketplaceRepository.workerWallet().balances
-        } catch (failure: Throwable) {
-            error = friendlyError(context, failure)
-        }
+        loadJobs(reset = true)
     }
 
     LazyColumn(
@@ -2037,10 +2119,10 @@ private fun WorkerDiscoveryScreen(
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.nearby_work), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text(stringResource(R.string.nearby_work_body), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.available_jobs), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.available_jobs_body), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = ::beginSearch, enabled = !loading) {
+                IconButton(onClick = { scope.launch { loadJobs(reset = true) } }, enabled = !loading) {
                     Icon(Icons.Outlined.Refresh, contentDescription = stringResource(R.string.refresh))
                 }
             }
@@ -2057,7 +2139,7 @@ private fun WorkerDiscoveryScreen(
                             Text(stringResource(R.string.location_protected), fontWeight = FontWeight.SemiBold)
                             Text(stringResource(R.string.location_protected_body), style = MaterialTheme.typography.bodySmall)
                         }
-                        Button(onClick = ::beginSearch, enabled = !loading) {
+                        Button(onClick = { scope.launch { loadJobs(reset = true) } }, enabled = !loading) {
                             if (loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                             else Text(stringResource(R.string.search))
                         }
@@ -2077,11 +2159,11 @@ private fun WorkerDiscoveryScreen(
         }
         error?.let { item { InlineNotice(it, Danger) } }
         if (jobs.isEmpty() && !loading && error == null) item {
-            EmptyCard(stringResource(R.string.ready_title), stringResource(R.string.ready_body))
+            EmptyCard(stringResource(R.string.no_available_jobs), stringResource(R.string.no_available_jobs_body))
         }
         items(jobs, key = { it.id }) { job -> WorkerSummaryCard(job, onClick = { onOpenJob(job.id) }) }
         if (hasMore) item {
-            OutlinedButton(onClick = { scope.launch { search(reset = false) } }, modifier = Modifier.fillMaxWidth(), enabled = !loading) {
+            OutlinedButton(onClick = { scope.launch { loadJobs(reset = false) } }, modifier = Modifier.fillMaxWidth(), enabled = !loading) {
                 Text(stringResource(R.string.load_more))
             }
         }
@@ -2375,12 +2457,12 @@ private fun WorkerJobPreviewScreen(
                                 },
                             )
                         }
-                        if (task.is_assigned_to_requester) {
-                            Text(stringResource(R.string.assigned_address), style = MaterialTheme.typography.labelLarge)
-                            Text(task.address ?: stringResource(R.string.address_unavailable))
-                        } else {
-                            InlineNotice(stringResource(R.string.privacy_before_accept), BrandTeal)
-                        }
+                        Text(stringResource(R.string.job_location), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            task.address?.ifBlank { null }
+                                ?: if (task.location != null) "Location coordinates: ${task.location.coordinates[1]}, ${task.location.coordinates[0]}"
+                                else stringResource(R.string.address_unavailable)
+                        )
                     }
                 }
             }

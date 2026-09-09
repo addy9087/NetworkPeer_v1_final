@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
-import { Briefcase, HardHat, KeyRound, Smartphone } from "lucide-react";
+import { Briefcase, Camera, HardHat, KeyRound, Mail, Smartphone, User } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
@@ -31,6 +31,9 @@ export type PendingOtp = {
   challengeId: string;
   otpLength: number;
   developmentOtp?: string;
+  fullName?: string;
+  email?: string;
+  selfieBase64?: string;
 };
 
 export const PENDING_OTP_KEY = "networkpeer-pending-otp";
@@ -50,10 +53,23 @@ function AuthPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [role, setRole] = useState<Role>("CLIENT");
   const [phone, setPhone] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [selfie, setSelfie] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
+    if (mode === "register") {
+      if (!fullName.trim() || fullName.trim().length < 2) {
+        setError("Please enter your full name. Name is required for registration.");
+        return;
+      }
+      if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        setError("Please enter a valid email address.");
+        return;
+      }
+    }
     const rawDigits = phone.trim().replace(/^(\+91|91)/, "").replace(/\D/g, "");
     if (!rawDigits || rawDigits.length !== 10) {
       setError("Please enter a valid 10-digit Indian mobile number.");
@@ -72,6 +88,9 @@ function AuthPage() {
         challengeId: result.challenge_id,
         otpLength: result.otp_length,
         developmentOtp: result.otp,
+        fullName: mode === "register" ? fullName.trim() : undefined,
+        email: mode === "register" && email.trim() ? email.trim() : undefined,
+        selfieBase64: mode === "register" && selfie ? selfie : undefined,
       };
       window.sessionStorage.setItem(PENDING_OTP_KEY, JSON.stringify(pending));
       toast.success(result.otp ? `Development OTP: ${result.otp}` : "Verification code sent");
@@ -146,6 +165,95 @@ function AuthPage() {
       </div>
 
       <div className="mt-6 space-y-4">
+        {mode === "register" && (
+          <>
+            <label className="block">
+              <span className="mb-1.5 block text-base font-medium">
+                Full name <span className="text-destructive">*</span>
+              </span>
+              <div className="relative">
+                <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  autoComplete="name"
+                  placeholder="Your full legal name"
+                  value={fullName}
+                  onChange={(event) => {
+                    setFullName(event.target.value);
+                    setError("");
+                  }}
+                  className="h-12 w-full rounded-xl border border-border bg-card pl-10 pr-3 text-base outline-none focus:ring-2 focus:ring-ring/40"
+                />
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Compulsory field for legal verification.</p>
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-base font-medium">
+                Email address <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
+              </span>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com (optional)"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="h-12 w-full rounded-xl border border-border bg-card pl-10 pr-3 text-base outline-none focus:ring-2 focus:ring-ring/40"
+                />
+              </div>
+            </label>
+
+            {role === "WORKER" && (
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold">Quick Selfie Verification</p>
+                    <p className="text-xs text-muted-foreground">Take a quick selfie to activate instant job discovery.</p>
+                  </div>
+                  <Camera className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex items-center gap-3">
+                  {selfie ? (
+                    <div className="relative h-16 w-16 overflow-hidden rounded-full border-2 border-primary">
+                      <img src={selfie} alt="Selfie" className="h-full w-full object-cover" />
+                    </div>
+                  ) : (
+                    <label className="press inline-flex items-center gap-2 rounded-xl border border-dashed border-border bg-muted/60 px-4 py-2.5 text-xs font-semibold cursor-pointer hover:border-primary/50">
+                      <Camera className="h-4 w-4 text-primary" />
+                      <span>Take quick selfie</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="user"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = () => setSelfie(reader.result as string);
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+                  {selfie && (
+                    <button
+                      type="button"
+                      onClick={() => setSelfie(null)}
+                      className="text-xs text-muted-foreground hover:text-destructive underline"
+                    >
+                      Retake
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         <label className="block">
           <span className="mb-1.5 block text-base font-medium">Mobile number</span>
           <div className="flex gap-2">

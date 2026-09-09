@@ -179,6 +179,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
 
   const updateProfileSchema = z
     .object({
+      full_name: z.string().trim().min(2).max(100).optional(),
       email: z.string().email().nullable().optional(),
       avatar_url: z.string().url().nullable().optional(),
       skills: z.array(z.string().max(50)).max(20).optional(),
@@ -193,6 +194,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send(fail("VALIDATION_ERROR", body.message));
     }
     const updated = await updateUserProfile(request.auth.userId, {
+      fullName: body.value.full_name,
       email: body.value.email,
       avatarUrl: body.value.avatar_url,
       skills: body.value.skills,

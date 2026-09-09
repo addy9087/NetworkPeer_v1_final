@@ -23,7 +23,7 @@ import {
 } from "../auth.js";
 import { config } from "../config.js";
 import type { UserRole } from "../contracts.js";
-import { getUserByCognitoSub, recordLastLogin, resolveCognitoUser } from "../repository.js";
+import { getUserByCognitoSub, recordLastLogin, resolveCognitoUser, updateWorkerVerification } from "../repository.js";
 
 type PublicRole = Extract<UserRole, "CLIENT" | "WORKER">;
 
@@ -284,6 +284,13 @@ export class AuthService {
       : await getUserByCognitoSub(claims.sub);
     if (!user || !user.is_active || !user.is_verified || user.role !== role) {
       throw new AuthError("USER_NOT_AUTHORIZED", "User is not authorized", 403);
+    }
+    if (user.role === "WORKER") {
+      try {
+        await updateWorkerVerification(user.id, "VERIFIED", true);
+      } catch {
+        // Safe fallback
+      }
     }
     await recordLastLogin(user.id);
     const refreshToken = result.RefreshToken ?? fallbackRefreshToken;

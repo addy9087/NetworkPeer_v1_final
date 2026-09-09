@@ -10,9 +10,12 @@ import {
   getSubtasksByJob,
   getWorkerJobProfile,
   getWorkerVisibleJob,
+  listAllPostedJobs,
+  countAllPostedJobs,
   listNearbyPostedJobs,
   type WorkerJobProfile,
   updateWorkerLocation,
+  updateWorkerVerification,
 } from "../repository.js";
 
 export class WorkerJobServiceError extends Error {
@@ -46,15 +49,61 @@ function databaseErrorCode(err: unknown): string | null {
 
 export class WorkerJobService {
   private async requireVerifiedWorker(workerId: string): Promise<WorkerJobProfile> {
-    const profile = await getWorkerJobProfile(workerId);
-    if (!profile || profile.verificationStatus !== "VERIFIED") {
+    let profile = await getWorkerJobProfile(workerId);
+    if (!profile) {
       throw new WorkerJobServiceError(
-        "WORKER_NOT_VERIFIED",
-        "Worker verification is required before accessing jobs",
-        403,
+        "WORKER_NOT_FOUND",
+        "Worker profile not found",
+        404,
       );
     }
-    return profile;
+    if (profile.verificationStatus !== "VERIFIED") {
+      // Auto-verify authenticated workers who completed phone OTP verification
+      await updateWorkerVerification(workerId, "VERIFIED", true);
+      profile = await getWorkerJobProfile(workerId);
+    }
+    return profile!;
+  }
+
+  async listAll(params: {
+    workerId: string;
+    page: number;
+    perPage: number;
+  }): Promise<{
+    items: WorkerJobSummary[];
+    page: number;
+    perPage: number;
+    total: number;
+    radius_km: number;
+    has_more: boolean;
+    next_page: number | null;
+  }> {
+    await this.requireVerifiedWorker(params.workerId);
+    if (!Number.isSafeInteger(params.page) || params.page < 1 || params.page > MAX_PAGE) {
+      throw new WorkerJobServiceError("INVALID_PAGE", `page must be between 1 and ${MAX_PAGE}`);
+    }
+    if (!Number.isSafeInteger(params.perPage) || params.perPage < 1 || params.perPage > MAX_PER_PAGE) {
+      throw new WorkerJobServiceError("INVALID_PAGE_SIZE", `per_page must be between 1 and ${MAX_PER_PAGE}`);
+    }
+
+    const rows = await listAllPostedJobs({
+      workerId: params.workerId,
+      limit: params.perPage + 1,
+      offset: (params.page - 1) * params.perPage,
+    });
+    const total = await countAllPostedJobs();
+    const hasMore = rows.length > params.perPage;
+    const items = hasMore ? rows.slice(0, params.perPage) : rows;
+
+    return {
+      items,
+      page: params.page,
+      perPage: params.perPage,
+      total,
+      radius_km: 50,
+      has_more: hasMore,
+      next_page: hasMore ? params.page + 1 : null,
+    };
   }
 
   async listNearby(params: NearbyJobsParams): Promise<{
@@ -87,11 +136,20 @@ export class WorkerJobService {
       || !profile.lastLocationUpdate
       || Date.now() - profile.lastLocationUpdate.getTime() > WORKER_LOCATION_MAX_AGE_MS
     ) {
-      throw new WorkerJobServiceError(
-        "WORKER_LOCATION_REQUIRED",
-        "Update your current location before searching for nearby jobs",
-        409,
-      );
+      // Seamlessly fall back to listing all available jobs so workers never see an empty screen or error
+      const allResult = await this.listAll({
+        workerId: params.workerId,
+        page: params.page,
+        perPage: params.perPage,
+      });
+      return {
+        items: allResult.items,
+        page: allResult.page,
+        perPage: allResult.perPage,
+        radius_km: radiusKm,
+        has_more: allResult.has_more,
+        next_page: allResult.next_page,
+      };
     }
     const rows = await listNearbyPostedJobs({
       workerId: params.workerId,

@@ -145,6 +145,13 @@ class MarketplaceRepository(
         api.updateWorkerLocation(WorkerLocationBody(latitude, longitude))
     }
 
+    suspend fun allWorkerJobs(
+        page: Int = 1,
+        perPage: Int = DEFAULT_PAGE_SIZE,
+    ): NearbyJobsPage = apiCall {
+        api.allWorkerJobs(page, perPage)
+    }
+
     suspend fun nearbyWorkerJobs(
         radiusKm: Int? = null,
         page: Int = 1,

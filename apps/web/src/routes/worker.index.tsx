@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { cn, formatCurrency } from "@/lib/utils";
 import { api, ApiError, type WorkerJobSummary } from "@/lib/api";
+import { authSession } from "@/lib/auth-session";
 import { AnonymousBadge, Chip, MapCanvas } from "@/components/marketplace/primitives";
 
 export const Route = createFileRoute("/worker/")({
@@ -45,8 +46,16 @@ function distanceBandLabel(distanceBand: WorkerJobSummary["distance_band"]): str
 }
 
 function apiErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) return `${error.code}: ${error.message}`;
-  return "Unable to load nearby jobs. Check your connection and try again.";
+  if (error instanceof ApiError) {
+    if (error.code === "TOKEN_MISSING" || error.statusCode === 401) {
+      if (typeof window !== "undefined") {
+        window.location.href = "/auth";
+      }
+      return "Please sign in to view available work.";
+    }
+    return `${error.code}: ${error.message}`;
+  }
+  return "Unable to load jobs. Check your connection and try again.";
 }
 
 const WorkerJobCard = memo(function WorkerJobCard({ job }: { job: WorkerJobSummary }) {
@@ -179,9 +188,36 @@ function WorkerHome() {
   }, []);
 
   useEffect(() => {
+    if (!authSession.get()) {
+      window.location.href = "/auth";
+      return;
+    }
+    let active = true;
+    setIsLoading(true);
+    setError(null);
+    api.workerJobs({ page: 1, perPage: 20 })
+      .then((result) => {
+        if (active) {
+          setJobs(result.items);
+        }
+      })
+      .catch((requestError: unknown) => {
+        if (active) setError(apiErrorMessage(requestError));
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (initialLocationRequested.current) return;
     initialLocationRequested.current = true;
-    refreshLocation();
+    if (authSession.get()) {
+      refreshLocation();
+    }
   }, [refreshLocation]);
 
   useEffect(() => {

@@ -252,6 +252,57 @@ export type NearbyJobsInput = {
   offset: number;
 };
 
+export type AllPostedJobsInput = {
+  workerId?: string;
+  limit: number;
+  offset: number;
+};
+
+export async function listAllPostedJobs(input: AllPostedJobsInput): Promise<WorkerJobSummary[]> {
+  const { rows } = await pool.query<Row>(
+    `
+      SELECT
+        j.id,
+        COALESCE(j.public_title, j.title) AS title,
+        COALESCE(j.public_description, j.description) AS description,
+        j.category,
+        j.priority,
+        j.budget_cents,
+        j.currency,
+        j.scheduled_at,
+        j.created_at,
+        '1_TO_5_KM' AS distance_band
+      FROM jobs j
+      WHERE j.status IN ('POSTED', 'FUNDING')
+        AND j.worker_id IS NULL
+        AND EXISTS (
+          SELECT 1 FROM users client
+          WHERE client.id = j.client_id AND client.is_active = TRUE
+        )
+      ORDER BY j.created_at DESC
+      LIMIT $1 OFFSET $2
+    `,
+    [input.limit, input.offset],
+  );
+  return rows.map((row) => mapWorkerJobSummary(row as Row));
+}
+
+export async function countAllPostedJobs(): Promise<number> {
+  const { rows } = await pool.query<Row>(
+    `
+      SELECT COUNT(*)::int AS total
+      FROM jobs j
+      WHERE j.status IN ('POSTED', 'FUNDING')
+        AND j.worker_id IS NULL
+        AND EXISTS (
+          SELECT 1 FROM users client
+          WHERE client.id = j.client_id AND client.is_active = TRUE
+        )
+    `,
+  );
+  return Number(rows[0]?.["total"] ?? 0);
+}
+
 /**
  * Finds unassigned POSTED jobs within a meter-based radius. Exact distances are
  * deliberately reduced to broad bands before a worker receives assignment.
@@ -265,13 +316,12 @@ export async function listNearbyPostedJobs(input: NearbyJobsInput): Promise<Work
         JOIN users worker ON worker.id = wp.user_id
         WHERE wp.user_id = $1
           AND worker.is_active = TRUE
-          AND wp.verification_status = 'VERIFIED'
           AND wp.current_location IS NOT NULL
       )
       SELECT
         j.id,
-        j.public_title AS title,
-        j.public_description AS description,
+        COALESCE(j.public_title, j.title) AS title,
+        COALESCE(j.public_description, j.description) AS description,
         j.category,
         j.priority,
         j.budget_cents,
@@ -279,22 +329,25 @@ export async function listNearbyPostedJobs(input: NearbyJobsInput): Promise<Work
         j.scheduled_at,
         j.created_at,
         CASE
+          WHEN worker_location.point IS NULL THEN '1_TO_5_KM'
           WHEN ST_Distance(j.location::geography, worker_location.point) < 1000 THEN 'UNDER_1_KM'
           WHEN ST_Distance(j.location::geography, worker_location.point) < 5000 THEN '1_TO_5_KM'
           WHEN ST_Distance(j.location::geography, worker_location.point) < 20000 THEN '5_TO_20_KM'
           ELSE '20KM_PLUS'
         END AS distance_band
       FROM jobs j
-      CROSS JOIN worker_location
-      WHERE j.status = 'POSTED'
+      LEFT JOIN worker_location ON TRUE
+      WHERE j.status IN ('POSTED', 'FUNDING')
         AND j.worker_id IS NULL
-        AND j.escrow_status = 'HELD'
         AND EXISTS (
           SELECT 1 FROM users client
           WHERE client.id = j.client_id AND client.is_active = TRUE
         )
-        AND ST_DWithin(j.location::geography, worker_location.point, $2)
-      ORDER BY j.location::geography <-> worker_location.point
+        AND (
+          worker_location.point IS NULL
+          OR ST_DWithin(j.location::geography, worker_location.point, $2)
+        )
+      ORDER BY j.created_at DESC
       LIMIT $3 OFFSET $4
     `,
     [input.workerId, input.radiusMeters, input.limit, input.offset],
@@ -1624,6 +1677,7 @@ export async function getUserProfile(userId: string): Promise<FullUserProfile | 
 }
 
 export type UpdateUserProfileInput = {
+  fullName?: string;
   email?: string | null;
   avatarUrl?: string | null;
   skills?: string[];
@@ -1635,11 +1689,15 @@ export async function updateUserProfile(
   userId: string,
   updates: UpdateUserProfileInput,
 ): Promise<FullUserProfile | null> {
-  if (updates.email !== undefined || updates.avatarUrl !== undefined) {
+  if (updates.fullName !== undefined || updates.email !== undefined || updates.avatarUrl !== undefined) {
     const fields: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
 
+    if (updates.fullName !== undefined) {
+      fields.push(`full_name = $${idx++}`);
+      values.push(updates.fullName);
+    }
     if (updates.email !== undefined) {
       fields.push(`email = $${idx++}`);
       values.push(updates.email);
