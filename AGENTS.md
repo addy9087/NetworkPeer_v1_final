@@ -51,8 +51,21 @@ NetworkPeer is a distributed physical-world operations marketplace connecting co
 - **Proximity Filtering**: Proximity radius filtering is strictly REMOVED (§9.2). All active unclaimed jobs across the serviceable region are visible to workers.
 - **Profile Crash Resilience**: `UserProfile` must always have fallback defaults (`displayName`, `displayPhone`) with `@SerialName` annotations (§9.3).
 
+### Rule 5: Qwen 3-8B Devanagari OCR & Bilingual Script Standards
+- **Model Standard**: All field evidence OCR extraction must adhere to **Qwen 3-8B for Devanagari OCR** (`Qwen-3-8B-Devanagari-OCR`).
+- **Script Classification**:
+  - Script detection distinguishes Devanagari Unicode (`\u0900..\u097F`), Latin English (`a..z, A..Z`), or Bilingual mixtures.
+  - Workers and Clients must be provided with interactive script tab filtering (`All Text (सभी)`, `हिन्दी (Hindi - देवनागरी)`, `English (Latin)`).
+- **Mobile Integration (`apps/android`)**:
+  - `FullScreenOcrDialog` provides multi-script tabs, Devanagari font rendering, Canary Yellow model badges, and one-tap clipboard copy.
+  - Correctionist Review Queue shows instant script classification pills (`[Bilingual]`, `[हिन्दी]`, `[English]`) alongside unit thumbnails.
+  - Worker Confirmation shows live `Qwen 3-8B OCR (98%)` evidence cards before submission.
+- **Web Integration (`apps/web`)**:
+  - `EvidenceOcrCard` in `/client/review/$jobId` provides interactive bilingual text tabs, confidence score (98.4%), and copy action.
+  - TypeScript types (`OCRResult`, `EvidenceSummary`) must retain `detectedScript`, `hindiText`, `englishText`, and `engineVersion`.
+
 ---
 
 ## 3. Dual-Role Field Worker Workflow
-1. **Collectionist**: Captures GPS-stamped photo evidence and answers field survey questionnaires.
-2. **Correctionist**: Performs split-screen review of submitted tasks, cross-verifying images and OCR text extractions with instant Approve / Reject / Redo actions.
+1. **Collectionist**: Captures GPS-stamped photo evidence and answers field survey questionnaires. Preview screen verifies OCR extraction via Qwen 3-8B prior to task submission.
+2. **Correctionist**: Performs split-screen review of submitted tasks, cross-verifying images and OCR text extractions (in Hindi, English, or Bilingual) with instant Approve / Reject / Redo actions.

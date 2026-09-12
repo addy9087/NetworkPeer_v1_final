@@ -110,6 +110,18 @@ export type WalletBalance = {
   lifetimeSpendCents: string;
 };
 
+export type OCRResult = {
+  engineVersion?: string; // "Qwen-3-8B-Devanagari-OCR"
+  modelName?: string; // "Qwen 3-8B"
+  text: string;
+  hindiText?: string;
+  englishText?: string;
+  detectedScript?: "hindi" | "english" | "bilingual" | "unknown";
+  confidence?: number;
+  language?: string;
+  generatedAt?: string;
+};
+
 export type EvidenceSummary = {
   id: string;
   job_id: string;
@@ -120,6 +132,9 @@ export type EvidenceSummary = {
   captured_at: string;
   uploaded_at: string | null;
   status: "PENDING" | "UPLOADED" | "VERIFIED" | "REJECTED";
+  preview_url?: string;
+  ocrStatus?: "idle" | "processing" | "ready" | "failed";
+  ocrResult?: OCRResult;
 };
 
 export type EvidenceUploadTarget = {

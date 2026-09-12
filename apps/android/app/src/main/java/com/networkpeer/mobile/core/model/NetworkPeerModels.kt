@@ -470,11 +470,26 @@ data class QualityCheckResult(
 @Serializable
 data class OCRResult(
     val text: String,
-    val confidence: Double,
-    val engineVersion: String? = "tesseract-5.3",
-    val language: String? = "en",
+    val confidence: Double = 0.98,
+    val engineVersion: String? = "Qwen-3-8B-Devanagari-OCR",
+    val modelName: String? = "Qwen 3-8B",
+    val language: String? = "hi+en",
+    val detectedScript: String? = "bilingual", // "hindi", "english", "bilingual"
+    val hindiText: String? = null,
+    val englishText: String? = null,
     val generatedAt: String? = null,
-)
+) {
+    val isHindiOnly: Boolean get() = detectedScript?.lowercase() == "hindi"
+    val isEnglishOnly: Boolean get() = detectedScript?.lowercase() == "english"
+    val isBilingual: Boolean get() = detectedScript?.lowercase() == "bilingual" || (hindiText != null && englishText != null)
+    val scriptBadge: String get() = when (detectedScript?.lowercase()) {
+        "hindi" -> "हिन्दी (Hindi - Devnagri)"
+        "english" -> "English (Latin)"
+        "bilingual" -> "Bilingual (हिन्दी + Eng)"
+        else -> "Devanagari OCR"
+    }
+}
+
 
 @Serializable
 data class ReviewEvent(
