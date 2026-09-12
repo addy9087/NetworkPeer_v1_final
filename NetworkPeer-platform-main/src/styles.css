@@ -348,6 +348,38 @@
   animation: fade-slide-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Aceternity UI 3D & Futuristic Beam / Grid Effects */
+@utility bg-grid-futuristic {
+  background-size: 36px 36px;
+  background-image: 
+    linear-gradient(to right, color-mix(in oklab, var(--foreground) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 5%, transparent) 1px, transparent 1px);
+}
+
+.glow-card-3d {
+  position: relative;
+  border-radius: 1rem;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glow-card-3d:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 16px 32px -8px color-mix(in oklab, var(--primary) 22%, transparent);
+}
+
+/* Rapido High-Contrast Palette */
+.rapido-accent-bg {
+  background-color: #F9D000;
+  color: #111111;
+  font-weight: 700;
+}
+
+.rapido-card {
+  border: 2px solid #111111;
+  background-color: #ffffff;
+  color: #111111;
+}
+
 /* ====== WORKER PORTAL - SMALLER FONTS ONLY ====== */
 .worker-portal-container {
   font-size: 0.85rem !important;

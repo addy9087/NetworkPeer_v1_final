@@ -215,7 +215,7 @@ function Landing() {
         </div>
       </header>
 
-      <section className="relative overflow-hidden">
+      <section className="relative overflow-hidden bg-grid-futuristic">
         <div className="surface-grid absolute inset-0 opacity-40" aria-hidden />
         <div className="absolute inset-0 bg-[var(--gradient-surface)]" aria-hidden />
         {/* Animated gradient blobs for a living, 3D-feeling backdrop */}
