@@ -64,8 +64,10 @@ export function PortalShell({
 
       <nav className="flex-1 space-y-1">
         {nav.map((item) => {
-          const active =
-            pathname === item.to || (item.to !== "/" && pathname.startsWith(item.to + "/"));
+          const isExactRoot = item.to === "/client" || item.to === "/worker" || item.to === "/admin";
+          const active = isExactRoot
+            ? pathname === item.to || pathname === `${item.to}/`
+            : pathname === item.to || (item.to !== "/" && pathname.startsWith(item.to + "/"));
           return (
             <Link
               key={item.to}
