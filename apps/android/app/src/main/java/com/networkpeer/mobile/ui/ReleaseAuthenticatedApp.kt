@@ -338,19 +338,19 @@ internal fun ReleaseAuthenticatedApp(container: AppContainer, session: StoredSes
                         selected = selectedTab == AppNavTab.DASHBOARD,
                         onClick = { selectedTab = AppNavTab.DASHBOARD },
                         icon = { Icon(Icons.Outlined.Dashboard, contentDescription = "Dashboard") },
-                        label = { Text("Dashboard") },
+                        label = { Text("Home", maxLines = 1, softWrap = false) },
                     )
                     NavigationBarItem(
                         selected = selectedTab == AppNavTab.JOBS,
                         onClick = { selectedTab = AppNavTab.JOBS },
                         icon = { Icon(Icons.Outlined.WorkOutline, contentDescription = "Jobs") },
-                        label = { Text("Jobs") },
+                        label = { Text("Jobs", maxLines = 1, softWrap = false) },
                     )
                     NavigationBarItem(
                         selected = selectedTab == AppNavTab.WALLET,
                         onClick = { selectedTab = AppNavTab.WALLET },
                         icon = { Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = "Wallet") },
-                        label = { Text("Wallet") },
+                        label = { Text("Wallet", maxLines = 1, softWrap = false) },
                     )
                     NavigationBarItem(
                         selected = selectedTab == AppNavTab.PROFILE,
@@ -359,7 +359,7 @@ internal fun ReleaseAuthenticatedApp(container: AppContainer, session: StoredSes
                             profileEditMode = false
                         },
                         icon = { Icon(Icons.Outlined.Person, contentDescription = "Profile") },
-                        label = { Text("Profile") },
+                        label = { Text("Profile", maxLines = 1, softWrap = false) },
                     )
                 }
             }
@@ -677,11 +677,11 @@ private fun WorkerDashboardScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     shape = MaterialTheme.shapes.medium,
                 ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text("Reliability", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
+                        Text("Reliability", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
-                        Text("98%", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        Text("Top performer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("98%", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text("Top performer", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 Card(
@@ -689,11 +689,11 @@ private fun WorkerDashboardScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     shape = MaterialTheme.shapes.medium,
                 ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text("Completed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
+                        Text("Completed", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
-                        Text("${profile?.workerProfile?.totalJobsCompleted ?: 12}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text("Verified jobs", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${profile?.workerProfile?.totalJobsCompleted ?: 12}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("Verified jobs", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 Card(
@@ -701,11 +701,11 @@ private fun WorkerDashboardScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     shape = MaterialTheme.shapes.medium,
                 ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text("Rating", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
+                        Text("Rating", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(4.dp))
-                        Text("4.9 ★", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
-                        Text("5.0 max", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("4.9 ★", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                        Text("5.0 max", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

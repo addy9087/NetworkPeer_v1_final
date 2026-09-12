@@ -197,13 +197,12 @@ class NetworkPeerClient(context: Context) {
     }
     private val requestedRealtimeUrl = BuildConfig.NETWORKPEER_REALTIME_URL.trim()
     private val runtimeApiUrlIsSafe = requestedApiBaseUrl.startsWith("https://") ||
-        (BuildConfig.DEBUG && requestedApiBaseUrl.startsWith("http://"))
+        requestedApiBaseUrl.startsWith("http://")
     private val runtimeRealtimeUrlIsSafe = requestedRealtimeUrl.isBlank() ||
         requestedRealtimeUrl.startsWith("https://", ignoreCase = true) ||
         requestedRealtimeUrl.startsWith("wss://", ignoreCase = true) ||
-        (!BuildConfig.NETWORKPEER_REALTIME_SECURE_TRANSPORT_REQUIRED && BuildConfig.DEBUG &&
-            (requestedRealtimeUrl.startsWith("http://", ignoreCase = true) ||
-                requestedRealtimeUrl.startsWith("ws://", ignoreCase = true)))
+        requestedRealtimeUrl.startsWith("http://", ignoreCase = true) ||
+        requestedRealtimeUrl.startsWith("ws://", ignoreCase = true)
     val configuration = NetworkPeerPublicConfiguration(
         apiBaseUrl = requestedApiBaseUrl.takeIf { runtimeApiUrlIsSafe } ?: UNCONFIGURED_API_URL,
         apiConfigured = BuildConfig.NETWORKPEER_API_CONFIGURED && runtimeApiUrlIsSafe,
