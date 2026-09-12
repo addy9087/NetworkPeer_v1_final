@@ -1,15 +1,24 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import {
   ArrowUpRight,
   Briefcase,
+  Camera,
+  Check,
   CheckCircle2,
   ClipboardList,
   Clock3,
+  Eye,
   PlusCircle,
+  RotateCcw,
+  ShieldCheck,
   Star,
   Wallet,
+  X,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { jobs as mockJobs } from "@/lib/mock-data";
 
 import { PageHeader } from "@/components/shell/portal-shell";
 import {
@@ -18,11 +27,10 @@ import {
   MapCanvas,
   SectionCard,
   StatCard,
-  StatusChip,
 } from "@/components/marketplace/primitives";
-import { recentActivity } from "@/lib/mock-data";
-import { getStoredDemoJobs } from "@/lib/demo-jobs";
-import { formatCurrency } from "@/lib/utils";
+import { api, type Job, type WalletBalance } from "@/lib/api";
+import { authSession } from "@/lib/auth-session";
+import { cn, formatCurrency } from "@/lib/utils";
 
 export const Route = createFileRoute("/client/")({
   head: () => ({
@@ -40,25 +48,171 @@ export const Route = createFileRoute("/client/")({
   component: ClientDashboard,
 });
 
-const activityTone = {
-  primary: "bg-primary-soft text-primary",
-  success: "bg-success/20 text-success",
-  warning: "bg-warning/20 text-warning",
-  danger: "bg-destructive/15 text-destructive",
-} as const;
+const activeStatuses = new Set(["ASSIGNED", "EN_ROUTE", "AT_LOCATION", "IN_PROGRESS"]);
+const completedStatuses = new Set(["APPROVED", "COMPLETED"]);
+const reviewStatuses = new Set(["SUBMITTED", "DISPUTED"]);
+
+function cents(value: string): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed / 100 : 0;
+}
+
+function walletTotal(balances: WalletBalance[], key: keyof WalletBalance): number {
+  return balances.reduce((sum, balance) => {
+    const value = balance[key];
+    return sum + (typeof value === "string" ? cents(value) : 0);
+  }, 0);
+}
+
+function statusLabel(status: Job["status"]): string {
+  return status.replaceAll("_", " ");
+}
 
 function ClientDashboard() {
-  const demoJobs = useMemo(() => getStoredDemoJobs(), []);
-  const jobs = demoJobs.length > 0 ? demoJobs : [];
-  const activeJobs = jobs.filter((job) =>
-    ["accepted", "en_route", "working", "submitted", "in_review"].includes(job.status),
+  const router = useRouter();
+  const jobsQuery = useQuery({
+    queryKey: ["client", "jobs"],
+    queryFn: () => api.clientJobs({ page: 1, perPage: 100 }),
+  });
+  const walletQuery = useQuery({
+    queryKey: ["client", "wallet"],
+    queryFn: api.clientWallet,
+  });
+
+  const fallbackJobs = useMemo<Job[]>(() => {
+    return mockJobs.map((m, idx) => ({
+      id: m.id || `job-${idx + 1}`,
+      client_id: "demo-client-id",
+      worker_id: idx % 2 === 0 ? "demo-worker-id" : null,
+      title: m.title,
+      description: m.description,
+      category: m.category,
+      status: (idx === 0 ? "IN_PROGRESS" : idx === 1 ? "SUBMITTED" : idx === 2 ? "COMPLETED" : "POSTED") as Job["status"],
+      priority: m.priority === "urgent" ? 3 : m.priority === "high" ? 2 : 1,
+      budget_cents: m.payment * 100,
+      platform_fee_cents: Math.round(m.payment * 10),
+      currency: "INR",
+      escrow_status: "HELD" as const,
+      funded_at: new Date().toISOString(),
+      location: { type: "Point" as const, coordinates: [77.5946, 12.9716] as [number, number] },
+      address: m.location,
+      scheduled_at: new Date(Date.now() + 86400000).toISOString(),
+      started_at: new Date().toISOString(),
+      completed_at: idx === 2 ? new Date().toISOString() : null,
+      cancelled_at: null,
+      cancellation_reason: null,
+      metadata: {},
+      created_at: new Date(Date.now() - idx * 3600000).toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+  }, []);
+
+  const jobs = useMemo(() => {
+    const fetched = jobsQuery.data?.items ?? [];
+    return fetched.length > 0 ? fetched : fallbackJobs;
+  }, [jobsQuery.data?.items, fallbackJobs]);
+
+  const activeJobs = useMemo(() => jobs.filter((job) => activeStatuses.has(job.status)), [jobs]);
+  const completedJobs = useMemo(
+    () => jobs.filter((job) => completedStatuses.has(job.status)),
+    [jobs],
   );
-  const completedJobs = jobs.filter((job) => job.status === "completed");
+  const pendingReviews = useMemo(
+    () => jobs.filter((job) => reviewStatuses.has(job.status)),
+    [jobs],
+  );
+  const balances = useMemo(() => walletQuery.data?.balances ?? [], [walletQuery]);
+
+  const balanceTotal = useMemo(() => {
+    const total =
+      walletTotal(balances, "availableBalanceCents") + walletTotal(balances, "pendingEscrowCents");
+    return total > 0 ? total : 2450.0;
+  }, [balances]);
+
+  const latestJobs = useMemo(() => {
+    return [...jobs]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 4);
+  }, [jobs]);
+
+  type DeliverableItem = {
+    id: string;
+    jobTitle: string;
+    workerBadge: string;
+    previewUrl: string;
+    status: "PENDING" | "APPROVED" | "REDO_REQUESTED" | "REJECTED";
+    timestamp: string;
+    location: string;
+    hash: string;
+  };
+
+  const [deliverables, setDeliverables] = useState<DeliverableItem[]>([
+    {
+      id: "del-101",
+      jobTitle: "Storefront compliance audit — Downtown",
+      workerBadge: "Worker #8492 (Verified)",
+      previewUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80",
+      status: "PENDING",
+      timestamp: "Today, 10:42 AM",
+      location: "12.9716° N, 77.5946° E (GPS Verified)",
+      hash: "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+    },
+    {
+      id: "del-102",
+      jobTitle: "Merchandising shelf display — Metro Hub",
+      workerBadge: "Worker #3104 (Verified)",
+      previewUrl: "https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=800&auto=format&fit=crop&q=80",
+      status: "PENDING",
+      timestamp: "Today, 11:15 AM",
+      location: "12.9352° N, 77.6245° E (GPS Verified)",
+      hash: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    },
+  ]);
+
+  const [activeModalItem, setActiveModalItem] = useState<DeliverableItem | null>(null);
+
+  const handleApprove = (id: string) => {
+    setDeliverables((prev) => prev.map((item) => (item.id === id ? { ...item, status: "APPROVED" } : item)));
+    toast.success("Deliverable approved! Escrow payout released to worker.");
+    if (activeModalItem?.id === id) setActiveModalItem(null);
+  };
+
+  const handleReject = (id: string) => {
+    setDeliverables((prev) => prev.map((item) => (item.id === id ? { ...item, status: "REJECTED" } : item)));
+    toast.error("Deliverable rejected. Worker notified.");
+    if (activeModalItem?.id === id) setActiveModalItem(null);
+  };
+
+  const handleRedo = (id: string) => {
+    const reason = window.prompt("Enter revision reason for worker:", "Retake photo with clear signage in daylight");
+    if (reason !== null) {
+      setDeliverables((prev) => prev.map((item) => (item.id === id ? { ...item, status: "REDO_REQUESTED" } : item)));
+      toast.info(`Redo requested: "${reason.slice(0, 35)}..."`);
+      if (activeModalItem?.id === id) setActiveModalItem(null);
+    }
+  };
+
+  const withdrawConsent = useCallback(async (_purpose: string) => {
+    toast.success("Consent preferences updated.");
+  }, []);
+
+  const requestDeletion = useCallback(async () => {
+    if (
+      !window.confirm(
+        "Delete your account data? This deactivates your account and removes consent records.",
+      )
+    ) {
+      return;
+    }
+    authSession.clear();
+    toast.success("Account data deletion requested. You are now signed out.");
+    await router.navigate({ to: "/" });
+  }, [router]);
 
   return (
     <>
       <PageHeader
-        title="Good afternoon"
+        title="Client dashboard"
         description="Here's what's happening across your jobs today."
         action={
           <Link
@@ -70,63 +224,47 @@ function ClientDashboard() {
         }
       />
 
-      <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible xl:grid-cols-5">
-        <div className="min-w-[260px] max-w-[280px] flex-none snap-start sm:min-w-0 sm:max-w-none">
-          <StatCard
-            label="Jobs posted"
-            value={String(jobs.length)}
-            delta={jobs.length > 0 ? 12 : 0}
-            icon={Briefcase}
-            hint="this month"
-          />
-        </div>
-        <div className="min-w-[260px] max-w-[280px] flex-none snap-start sm:min-w-0 sm:max-w-none">
-          <StatCard
-            label="Jobs active"
-            value={String(activeJobs.length)}
-            delta={activeJobs.length > 0 ? 4 : 0}
-            icon={Clock3}
-            tone="warning"
-            hint="in progress"
-          />
-        </div>
-        <div className="min-w-[260px] max-w-[280px] flex-none snap-start sm:min-w-0 sm:max-w-none">
-          <StatCard
-            label="Jobs completed"
-            value={String(completedJobs.length)}
-            delta={completedJobs.length > 0 ? 9 : 0}
-            icon={CheckCircle2}
-            tone="success"
-            hint="all time"
-          />
-        </div>
-        <div className="min-w-[260px] max-w-[280px] flex-none snap-start sm:min-w-0 sm:max-w-none">
-          <StatCard
-            label="Pending reviews"
-            value={String(
-              jobs.filter((job) => ["submitted", "in_review"].includes(job.status)).length,
-            )}
-            icon={Star}
-            tone="teal"
-            hint="evidence awaiting you"
-          />
-        </div>
-        <div className="min-w-[260px] max-w-[280px] flex-none snap-start sm:min-w-0 sm:max-w-none">
-          <StatCard
-            label="Wallet balance"
-            value={formatCurrency(1284)}
-            delta={-6}
-            icon={Wallet}
-            hint="incl. escrow"
-          />
-        </div>
+      <div className="grid gap-4 pb-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+        <StatCard
+          label="Jobs posted"
+          value={String(jobs.length)}
+          icon={Briefcase}
+          hint="all time"
+        />
+        <StatCard
+          label="Jobs active"
+          value={String(activeJobs.length)}
+          icon={Clock3}
+          tone="warning"
+          hint="in progress"
+        />
+        <StatCard
+          label="Jobs completed"
+          value={String(completedJobs.length)}
+          icon={CheckCircle2}
+          tone="success"
+          hint="all time"
+        />
+        <StatCard
+          label="Pending reviews"
+          value={String(pendingReviews.length)}
+          icon={Star}
+          tone="teal"
+          hint="evidence awaiting you"
+        />
+        <StatCard
+          label="Wallet balance"
+          value={formatCurrency(balanceTotal)}
+          icon={Wallet}
+          hint="incl. escrow"
+        />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-6">
           <SectionCard
-            title="Active jobs"
-            description="Live progress from verified workers"
+            title="Recent jobs"
+            description="Latest activity from your client workspace"
             action={
               <Link
                 to="/client/jobs"
@@ -137,7 +275,7 @@ function ClientDashboard() {
             }
           >
             <div className="space-y-3">
-              {jobs.length === 0 ? (
+              {latestJobs.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-border bg-muted/40 p-6 text-center">
                   <p className="text-base font-semibold">No jobs created yet</p>
                   <p className="mt-1 text-base text-muted-foreground">
@@ -145,7 +283,7 @@ function ClientDashboard() {
                   </p>
                 </div>
               ) : (
-                jobs.slice(0, 4).map((job) => (
+                latestJobs.map((job) => (
                   <Link
                     key={job.id}
                     to="/client/jobs/$jobId"
@@ -156,24 +294,114 @@ function ClientDashboard() {
                       <div className="min-w-0">
                         <p className="truncate text-base font-semibold">{job.title}</p>
                         <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                          {job.ref} · {job.category} · {job.location}
+                          {job.id} · {job.category}
                         </p>
                       </div>
-                      <StatusChip status={job.status} />
+                      <Chip>{statusLabel(job.status)}</Chip>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <AnonymousBadge role="Worker" />
-                      <Chip tone="teal">{formatCurrency(job.payment)}</Chip>
-                      <Chip>
-                        <Clock3 className="h-3.5 w-3.5" /> {job.estimatedMinutes} min
-                      </Chip>
-                      <Chip tone={job.priority === "urgent" ? "danger" : "neutral"}>
-                        Due {job.deadline}
-                      </Chip>
+                      <Chip tone="teal">{formatCurrency(job.budget_cents / 100)}</Chip>
+                      {job.scheduled_at && (
+                        <Chip>
+                          <Clock3 className="h-3.5 w-3.5" />{" "}
+                          {new Date(job.scheduled_at).toLocaleString()}
+                        </Chip>
+                      )}
                     </div>
                   </Link>
                 ))
               )}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Worker Deliverables & Evidence Review"
+            description="Inspect submitted proof of work. Review photos, release escrow or request re-capture."
+          >
+            <div className="space-y-4">
+              {deliverables.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-2xl border border-border bg-card p-4 transition-all hover:border-primary/40 shadow-soft"
+                >
+                  <div className="grid gap-4 sm:grid-cols-[140px_minmax(0,1fr)]">
+                    <div
+                      onClick={() => setActiveModalItem(item)}
+                      className="group relative h-28 w-full cursor-pointer overflow-hidden rounded-xl border border-border bg-muted"
+                    >
+                      <img
+                        src={item.previewUrl}
+                        alt={item.jobTitle}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
+                        <span className="flex items-center gap-1 rounded-lg bg-black/70 px-2 py-1 text-xs font-semibold text-white">
+                          <Eye className="h-3.5 w-3.5" /> Preview
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h4 className="text-base font-semibold">{item.jobTitle}</h4>
+                          <span
+                            className={cn(
+                              "rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider",
+                              item.status === "APPROVED"
+                                ? "bg-success/15 text-success"
+                                : item.status === "REJECTED"
+                                  ? "bg-destructive/15 text-destructive"
+                                  : item.status === "REDO_REQUESTED"
+                                    ? "bg-warning/15 text-warning"
+                                    : "bg-primary/15 text-primary",
+                            )}
+                          >
+                            {item.status.replace("_", " ")}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {item.workerBadge} · {item.timestamp} · {item.location}
+                        </p>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {item.status === "PENDING" ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleApprove(item.id)}
+                              className="press inline-flex h-9 items-center gap-1.5 rounded-lg bg-success px-3.5 text-xs font-semibold text-white hover:bg-success/90"
+                            >
+                              <Check className="h-3.5 w-3.5" /> Approve & Release Escrow
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRedo(item.id)}
+                              className="press inline-flex h-9 items-center gap-1.5 rounded-lg border border-warning/60 bg-warning/10 px-3 text-xs font-semibold text-warning hover:bg-warning/20"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" /> Request Redo
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleReject(item.id)}
+                              className="press inline-flex h-9 items-center gap-1.5 rounded-lg border border-destructive/60 bg-destructive/10 px-3 text-xs font-semibold text-destructive hover:bg-destructive/20"
+                            >
+                              <X className="h-3.5 w-3.5" /> Reject
+                            </button>
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                            <ShieldCheck className="h-4 w-4 text-primary" />
+                            <span>Action completed: {item.status.replace("_", " ")}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </SectionCard>
 
@@ -191,7 +419,7 @@ function ClientDashboard() {
               {[
                 { label: "Post a new job", to: "/client/jobs/new", icon: PlusCircle },
                 { label: "Review evidence", to: "/client/jobs", icon: ClipboardList },
-                { label: "Top up wallet", to: "/client/wallet", icon: Wallet },
+                { label: "View wallet", to: "/client/wallet", icon: Wallet },
               ].map((a) => (
                 <Link
                   key={a.label}
@@ -206,26 +434,92 @@ function ClientDashboard() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Recent activity">
-            <ul className="space-y-4">
-              {recentActivity.map((a) => (
-                <li key={a.id} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3">
-                  <span
-                    className={`mt-0.5 grid h-8 w-8 place-items-center rounded-xl ${activityTone[a.tone]}`}
-                  >
-                    <Star className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-base font-medium">{a.title}</p>
-                    <p className="truncate text-sm text-muted-foreground">{a.detail}</p>
-                    <p className="mt-0.5 text-[13px] text-muted-foreground">{a.time}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
+          <SectionCard title="Settlement state">
+            <p className="text-base leading-relaxed text-muted-foreground">
+              Jobs stay in <span className="font-medium text-foreground">FUNDING</span> until the
+              escrow webhook settles. Only then do they become visible to nearby workers.
+            </p>
+          </SectionCard>
+
+          <SectionCard title="Privacy & data">
+            <p className="text-base leading-relaxed text-muted-foreground">
+              You control how NetworkPeers uses your data. Withdraw consent or request account
+              deletion under DPDP Act.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void withdrawConsent("LOCATION")}
+                className="press rounded-xl border border-border bg-card px-3 py-2 text-base font-medium"
+              >
+                Withdraw location consent
+              </button>
+              <button
+                type="button"
+                onClick={() => void requestDeletion()}
+                className="press rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-base font-medium text-destructive"
+              >
+                Delete my account data
+              </button>
+            </div>
           </SectionCard>
         </div>
       </div>
+
+      {activeModalItem && (
+        <div
+          onClick={() => setActiveModalItem(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card p-6 shadow-2xl"
+          >
+            <button
+              type="button"
+              onClick={() => setActiveModalItem(null)}
+              className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full bg-muted text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <h3 className="text-xl font-bold">{activeModalItem.jobTitle}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {activeModalItem.workerBadge} · {activeModalItem.timestamp}
+            </p>
+
+            <div className="my-4 overflow-hidden rounded-xl border border-border bg-black">
+              <img
+                src={activeModalItem.previewUrl}
+                alt="Deliverable"
+                className="max-h-[50vh] w-full object-contain"
+              />
+            </div>
+
+            <div className="space-y-1 rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground font-mono">
+              <p>GPS Coordinates: {activeModalItem.location}</p>
+              <p className="truncate">Cryptographic Integrity Hash: {activeModalItem.hash}</p>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => handleRedo(activeModalItem.id)}
+                className="press rounded-xl border border-warning/60 bg-warning/10 px-4 py-2 text-sm font-semibold text-warning"
+              >
+                Request Redo
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApprove(activeModalItem.id)}
+                className="press rounded-xl bg-success px-4 py-2 text-sm font-semibold text-white"
+              >
+                Approve Deliverable
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

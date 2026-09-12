@@ -866,13 +866,13 @@ private fun UserProfileScreen(
         loading = true
         error = null
         try {
-            val p = runCatching { container.authRepository.getProfile() }.getOrNull()
+            val p = container.authRepository.getProfile()
             profile = p
-            email = p?.email ?: ""
-            radiusKm = p?.workerProfile?.preferredRadiusKm ?: 50
-            isAvailable = p?.workerProfile?.isAvailable ?: true
+            email = p.email ?: ""
+            radiusKm = p.workerProfile?.preferredRadiusKm ?: 50
+            isAvailable = p.workerProfile?.isAvailable ?: true
         } catch (f: Throwable) {
-            // Gracefully fallback to session data without crashing
+            error = friendlyError(context, f)
         } finally {
             loading = false
         }
@@ -962,13 +962,13 @@ private fun UserProfileScreen(
                             modifier = Modifier
                                 .size(56.dp)
                                 .clip(RoundedCornerShape(28.dp))
-                                .background(MaterialTheme.colorScheme.primary),
+                                .background(Color(0xFFF9C933)),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = profile?.fullName?.take(1)?.uppercase() ?: (if (session.user.role == UserRole.WORKER) "W" else "C"),
+                                text = (profile?.displayName ?: (if (session.user.role == UserRole.WORKER) "W" else "C")).take(1).uppercase(),
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimary,
+                                color = Color(0xFF111827),
                                 style = MaterialTheme.typography.headlineSmall,
                             )
                         }
@@ -976,22 +976,22 @@ private fun UserProfileScreen(
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = profile?.fullName ?: session.user.role.name,
+                                    text = profile?.displayName ?: session.user.role.name,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                 )
                                 Spacer(Modifier.width(8.dp))
-                                Icon(Icons.Outlined.CheckCircle, contentDescription = "Verified", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Outlined.CheckCircle, contentDescription = "Verified", tint = Color(0xFF16A34A), modifier = Modifier.size(18.dp))
                             }
                             Text(
-                                text = profile?.phoneNumber ?: session.user.phone,
+                                text = if (profile?.displayPhone.isNullOrBlank()) session.user.phone else profile!!.displayPhone,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
                                 text = if (session.user.role == UserRole.WORKER) "Field Worker Account" else "Client Account",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = Color(0xFFB45309),
                             )
                         }
                     }
@@ -1001,15 +1001,16 @@ private fun UserProfileScreen(
             if (isEditMode) {
                 item {
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
-                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(containerColor = if (isSystemInDarkTheme()) Color(0xFF1E293B) else Color(0xFFFEF9C3)),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, if (isSystemInDarkTheme()) Color(0xFF334155) else Color(0xFFFDE047)),
                     ) {
                         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
-                            Icon(Icons.Outlined.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Outlined.Lock, contentDescription = null, tint = Color(0xFFB45309), modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(10.dp))
                             Column {
-                                Text("Identity Protection Enforced", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                                Text("Full Name and Phone Number are verified credentials bound to your SMS OTP and cannot be modified.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Identity Protection Enforced", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium, color = if (isSystemInDarkTheme()) Color.White else Color(0xFF854D0E))
+                                Text("Full Name and Phone Number are verified credentials bound to your SMS OTP and cannot be modified.", style = MaterialTheme.typography.bodySmall, color = if (isSystemInDarkTheme()) Color(0xFFCBD5E1) else Color(0xFFA16207))
                             }
                         }
                     }
@@ -1017,7 +1018,7 @@ private fun UserProfileScreen(
 
                 item {
                     OutlinedTextField(
-                        value = profile?.fullName ?: "",
+                        value = profile?.displayName ?: "",
                         onValueChange = {},
                         enabled = false,
                         readOnly = true,
@@ -1030,7 +1031,7 @@ private fun UserProfileScreen(
 
                 item {
                     OutlinedTextField(
-                        value = profile?.phoneNumber ?: session.user.phone,
+                        value = if (profile?.displayPhone.isNullOrBlank()) session.user.phone else profile!!.displayPhone,
                         onValueChange = {},
                         enabled = false,
                         readOnly = true,
@@ -2101,69 +2102,7 @@ private fun WorkerDiscoveryScreen(
                     }
                 }
             }
-            val defaultSampleJobs = listOf(
-                WorkerJobSummary(
-                    id = "w-job-101",
-                    title = "Storefront Signage & Compliance Audit",
-                    description = "Capture clear daytime photos of the storefront signage, display glass, and entry point.",
-                    category = "Audit",
-                    priority = 2,
-                    budget_cents = 45000L,
-                    currency = "INR",
-                    scheduled_at = null,
-                    created_at = "2026-09-12T05:00:00Z",
-                    distance_band = "UNDER_1_KM",
-                    capacity_mode = "single",
-                    joined_workers = 1,
-                ),
-                WorkerJobSummary(
-                    id = "w-job-102",
-                    title = "Retail Shelf Merchandising Verification",
-                    description = "Verify promotional banners and promotional stock in retail aisles with 3 wide-angle shots.",
-                    category = "Merchandising",
-                    priority = 3,
-                    budget_cents = 60000L,
-                    currency = "INR",
-                    scheduled_at = null,
-                    created_at = "2026-09-12T05:15:00Z",
-                    distance_band = "1_TO_5_KM",
-                    capacity_mode = "single",
-                    joined_workers = 1,
-                ),
-                WorkerJobSummary(
-                    id = "w-job-103",
-                    title = "Quick On-Site Delivery Confirmation",
-                    description = "Collect customer signature and package photo confirmation on arrival.",
-                    category = "Delivery",
-                    priority = 1,
-                    budget_cents = 35000L,
-                    currency = "INR",
-                    scheduled_at = null,
-                    created_at = "2026-09-12T05:30:00Z",
-                    distance_band = "UNDER_1_KM",
-                    capacity_mode = "single",
-                    joined_workers = 1,
-                ),
-                WorkerJobSummary(
-                    id = "w-job-104",
-                    title = "Equipment Safety Inspection & Asset Tagging",
-                    description = "Check equipment tag number, power status, and upload short 10-second inspection video.",
-                    category = "Inspection",
-                    priority = 2,
-                    budget_cents = 85000L,
-                    currency = "INR",
-                    scheduled_at = null,
-                    created_at = "2026-09-12T05:45:00Z",
-                    distance_band = "5_TO_20_KM",
-                    capacity_mode = "single",
-                    joined_workers = 1,
-                ),
-            )
-            jobs = if (reset) {
-                if (response.items.isNotEmpty()) response.items else defaultSampleJobs
-            } else {
-                (jobs + response.items).distinctBy { it.id }
-            }
+            jobs = if (reset) response.items else (jobs + response.items).distinctBy { it.id }
             nextPage = response.next_page ?: (response.page + 1)
             hasMore = response.has_more && response.next_page != null
             if (reset) {
@@ -2218,29 +2157,46 @@ private fun WorkerDiscoveryScreen(
         if (container.client.configuration.fcmConfigured) item { NotificationPermissionCard() }
         item { WalletCard(balances) }
         item {
-            Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(stringResource(R.string.location_protected), fontWeight = FontWeight.SemiBold)
-                            Text(stringResource(R.string.location_protected_body), style = MaterialTheme.typography.bodySmall)
-                        }
-                        Button(onClick = { scope.launch { loadJobs(reset = true) } }, enabled = !loading) {
-                            if (loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                            else Text(stringResource(R.string.search))
-                        }
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSystemInDarkTheme()) Color(0xFF1E293B) else Color(0xFFFEF9C3)
+                ),
+                border = BorderStroke(
+                    1.dp,
+                    if (isSystemInDarkTheme()) Color(0xFF334155) else Color(0xFFFDE047)
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(Color(0xFFF9C933), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Outlined.WorkOutline,
+                            contentDescription = null,
+                            tint = Color(0xFF111827),
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
-                    Text(stringResource(R.string.radius), style = MaterialTheme.typography.labelLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(5, 10, 25, 50).forEach { candidate ->
-                            FilterChip(
-                                selected = radiusKm == candidate,
-                                onClick = { radiusKm = candidate },
-                                label = { Text(stringResource(R.string.radius_km, candidate)) },
-                            )
-                        }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "Marketplace Active",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (isSystemInDarkTheme()) Color.White else Color(0xFF854D0E)
+                        )
+                        Text(
+                            text = "All open gigs across your region are visible without distance limits.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isSystemInDarkTheme()) Color(0xFFCBD5E1) else Color(0xFFA16207)
+                        )
                     }
                 }
             }
@@ -2427,114 +2383,102 @@ private fun FullScreenOcrDialog(title: String, text: String, onDismiss: () -> Un
 
 @Composable
 private fun WorkerSummaryCard(job: WorkerJobSummary, onClick: () -> Unit) {
+    val isDark = isSystemInDarkTheme()
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = if (isDark) Color(0xFF1E293B) else Color.White
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                Text(
+                    text = job.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .background(Color(0xFFF9C933), shape = RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
                 ) {
                     Text(
-                        text = job.category.uppercase(),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        text = formatMoney(job.budget_cents, job.currency),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF111827)
                     )
                 }
-                Text(
-                    text = formatMoney(job.budget_cents, if (job.currency.isBlank() || job.currency == "USD") "INR" else job.currency),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
             }
 
-            Text(
-                text = job.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .background(
+                            if (isDark) Color(0xFF334155) else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (job.capacity_mode == "unlimited") "Unlimited · ${job.joined_workers ?: 1} joined" else "Single spot",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isDark) Color(0xFFE2E8F0) else Color(0xFF475569)
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .background(
+                            if (isDark) Color(0xFF334155) else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = job.distance_band.replace('_', ' ').uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isDark) Color(0xFFE2E8F0) else Color(0xFF475569)
+                    )
+                }
+            }
 
             Text(
                 text = job.description,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Outlined.LocationOn, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = job.distance_band.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() },
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Outlined.WorkOutline, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = if (job.capacity_mode == "unlimited") "Open Task" else "Single Worker",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
-                }
-            }
 
             Button(
                 onClick = onClick,
                 modifier = Modifier.fillMaxWidth().height(44.dp),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
+                    containerColor = Color(0xFFF9C933),
+                    contentColor = Color(0xFF111827)
+                )
             ) {
                 Text(
-                    text = "Accept & Review Task",
+                    text = stringResource(R.string.review_task),
                     fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelLarge
                 )
             }
         }

@@ -1,90 +1,58 @@
-# AGENTS.md — NetworkPeer Project Guide & Architecture Handbook
+# NetworkPeer Agent Instructions & Engineering Guardrails
 
-Welcome to the **NetworkPeer** repository. This document serves as the single source of truth for autonomous agents and engineers working across the Android Kotlin mobile application, the Web platform, and cloud infrastructure.
+## 1. System Overview & Architecture
+NetworkPeer is a distributed physical-world operations marketplace connecting corporate clients with verified on-demand field workers for data collection and evidence verification.
 
----
-
-## 1. Repository Structure Overview
-
-```
-NetworkPeer/
-├── apps/
-│   └── android/                     # Native Android application (Kotlin + Jetpack Compose)
-│       ├── app/src/main/java/       # UI screens, ViewModels, and Core repositories
-│       └── build.gradle.kts         # Android Gradle configuration (Target SDK 34, Min SDK 26)
-├── NetworkPeer-platform-main/       # Web Platform (TanStack Start / React 19 / Nitro / Vite / Tailwind)
-│   ├── src/
-│   │   ├── routes/                  # File-based TanStack routes (__root, auth, client, worker, admin)
-│   │   ├── components/              # Reusable UI primitives, Marketplace components & layout shell
-│   │   └── lib/                     # API client, Auth session store, and Utility helpers
-│   ├── vite.config.ts               # Vite bundler configuration & AWS ALB reverse proxy
-│   └── package.json                 # Web dependencies and build scripts
-├── infra/
-│   └── terraform/                   # AWS Terraform configuration (ALB, ECS Fargate, RDS, VPC)
-├── DEPLOYMENT_ANDROID.md            # Android compilation, APK packaging & distribution runbook
-├── AWS_INFRASTRUCTURE_AUDIT.md      # AWS service inventory, cost breakdown, and pausing procedures
-└── DATABASE_AND_EVIDENCE_GUIDE.md   # PostgreSQL schema, S3 evidence storage, and GUI tools guide
-```
+- **Web Platform (`apps/web`)**: TanStack Start (SSR) + Nitro engine with Vite, Tailwind CSS v4, Lucide React, deployed to Vercel (`https://networkpeer-platform.vercel.app`).
+- **Android App (`apps/android`)**: Native Kotlin, Jetpack Compose, Material 3, OkHttp/Retrofit, Coroutines, Rapido-styled high-contrast design system.
+- **Backend API**: High-throughput distributed REST + WebSocket gateway backed by AWS ALB (`http://networkpeer-staging-api-alb-969746120.eu-north-1.elb.amazonaws.com`).
 
 ---
 
-## 2. Common Build & Test Commands
+## 2. Critical Operational Rules for AI Agents
 
-### Web Platform (`NetworkPeer-platform-main`)
-```bash
-# Navigate to web platform
-cd NetworkPeer-platform-main
+### Rule 1: macOS iCloud Dataless File Handling
+- The repository workspace is located within an iCloud-synced folder (`/Users/adityasharma/Desktop/`).
+- **NEVER** overwrite existing binary or deeply nested folders in place with standard `cp` or `git status` commands without caution. macOS iCloud hooks (`com.apple.netsrc`) can trigger blocking hydration locks.
+- **ALWAYS** remove (`rm -rf <path>`) target files/folders before recreating them, or use `cp -X` (stripping extended attributes) to prevent hydration stalls.
+- When running builds with heavy I/O or Vercel CLI deployments, execute from local non-synced volumes such as `/Users/adityasharma/Downloads/` or `/tmp/` and symlink/copy back.
 
-# Install dependencies
-npm install
+### Rule 2: Web Platform Deployment
+- Prebuilt deployment targeting Vercel:
+  ```bash
+  NITRO_PRESET=vercel npx vite build
+  vercel deploy --prebuilt --prod --yes
+  ```
+- The production site is live at: `https://networkpeer-platform.vercel.app`.
+- The Client Profile route is live at: `https://networkpeer-platform.vercel.app/client/profile`.
 
-# Run development server (Vite + SSR)
-npm run dev
+### Rule 3: Native Android Compilation
+- Environment requirement:
+  ```bash
+  export JAVA_HOME=/opt/homebrew/opt/openjdk@17
+  export ANDROID_HOME=/Users/adityasharma/Library/Android/sdk
+  ```
+- Build flavors: `development` and `production`.
+- Compile tasks:
+  ```bash
+  ./gradlew compileDevelopmentDebugKotlin
+  ./gradlew assembleDevelopmentDebug
+  ```
+- Output APK location: `apps/android/app/build/outputs/apk/development/debug/app-development-debug.apk`.
 
-# Run TypeScript typecheck (Mandatory before committing)
-npx tsc --noEmit
-
-# Production build for Vercel
-NITRO_PRESET=vercel npm run build
-
-# Deploy prebuilt output to Vercel production
-npx vercel deploy --prebuilt --prod --yes
-```
-
-### Android Application (`apps/android`)
-```bash
-# Navigate to Android directory
-cd apps/android
-
-# Set required environment variables
-export JAVA_HOME=/opt/homebrew/opt/openjdk@17
-export ANDROID_HOME=/Users/adityasharma/Library/Android/sdk
-export PATH=$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH
-
-# Run unit tests
-./gradlew testDevelopmentDebugUnitTest
-
-# Assemble development debug APK
-./gradlew assembleDevelopmentDebug
-
-# Flash to connected device via USB
-adb install -r app/build/outputs/apk/development/debug/app-development-debug.apk
-
-# Launch main activity
-adb shell am start -n com.networkpeer.mobile.dev/com.networkpeer.mobile.MainActivity
-```
+### Rule 4: Rapido UI/UX Design Standards (Mobile)
+- **Color Palette**:
+  - Primary Accent: Canary / Amber Yellow (`#F9C933` / `#FFC72C`)
+  - Deep Contrast: Obsidian Charcoal (`#111827`)
+  - Supporting Muted: Slate Grey (`#64748B`, `#334155`)
+  - Alert / Accent States: Green (`#16A34A`), Amber Warning (`#B45309`), Danger (`#DC2626`)
+- **Card Design**: Flat cards with subtle borders (`RoundedCornerShape(16.dp)`), high contrast, minimal chrome.
+- **Payout Badges**: Large, prominent currency badges (`₹450`) with canary yellow background pill.
+- **Proximity Filtering**: Proximity radius filtering is strictly REMOVED (§9.2). All active unclaimed jobs across the serviceable region are visible to workers.
+- **Profile Crash Resilience**: `UserProfile` must always have fallback defaults (`displayName`, `displayPhone`) with `@SerialName` annotations (§9.3).
 
 ---
 
-## 3. Core Architectural Rules
-
-1. **Source Control Hygiene**:
-   - Always verify TypeScript compilation (`npx tsc --noEmit`) and Gradle compilation before pushing.
-   - Never commit `.DS_Store`, `.env` secrets, or local Gradle cache files.
-2. **Double-Entry Escrow & Financial State**:
-   - Jobs are funded through client escrow. Funds remain in `escrow_status = 'HELD'` until evidence is approved by the client or platform admin.
-   - The double-entry ledger in PostgreSQL (`ledger_entries`) records debits and credits immutably. Never manually edit balances without ledger transactions.
-3. **Resilient Mock Fallbacks**:
-   - When running without a live backend connection, web and mobile platforms gracefully display sample mock data (`fallbackJobs`, `defaultSampleJobs`) to allow full UI inspection and offline demonstrations.
-4. **Anonymous Gig Marketplace Protocol**:
-   - Worker exact locations and client identities remain masked until mutual acceptance and escrow funding are confirmed.
+## 3. Dual-Role Field Worker Workflow
+1. **Collectionist**: Captures GPS-stamped photo evidence and answers field survey questionnaires.
+2. **Correctionist**: Performs split-screen review of submitted tasks, cross-verifying images and OCR text extractions with instant Approve / Reject / Redo actions.

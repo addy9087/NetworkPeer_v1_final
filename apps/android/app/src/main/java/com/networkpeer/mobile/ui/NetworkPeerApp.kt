@@ -147,23 +147,23 @@ private fun RoleSelectionCard(
 ) {
     val isDark = isSystemInDarkTheme()
     val cardBg = if (selected) {
-        if (isDark) Color(0xFF0369A1).copy(alpha = 0.35f) else BrandSkyContainer.copy(alpha = 0.7f)
+        if (isDark) Color(0xFFF9C933).copy(alpha = 0.2f) else Color(0xFFFEF9C3)
     } else {
         MaterialTheme.colorScheme.surface
     }
-    val cardBorder = if (selected) BrandSkyPrimary else MaterialTheme.colorScheme.outline
+    val cardBorder = if (selected) Color(0xFFF9C933) else MaterialTheme.colorScheme.outline
     val iconBg = if (selected) {
-        if (isDark) BrandSkyPrimary.copy(alpha = 0.3f) else BrandSkyContainer
+        Color(0xFFF9C933)
     } else {
         MaterialTheme.colorScheme.surfaceVariant
     }
     val iconTint = if (selected) {
-        if (isDark) BrandSkyLight else BrandSkyPrimary
+        Color(0xFF111827)
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
     val titleColor = if (selected) {
-        if (isDark) Color.White else BrandSkyText
+        if (isDark) Color.White else Color(0xFF111827)
     } else {
         MaterialTheme.colorScheme.onSurface
     }
@@ -208,13 +208,13 @@ private fun RoleSelectionCard(
                     Box(
                         modifier = Modifier
                             .size(20.dp)
-                            .background(BrandSkyPrimary, RoundedCornerShape(10.dp)),
+                            .background(Color(0xFFF9C933), RoundedCornerShape(10.dp)),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Check,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = Color(0xFF111827),
                             modifier = Modifier.size(14.dp),
                         )
                     }
@@ -626,85 +626,66 @@ private fun AuthScreen(container: AppContainer) {
                     deliveryNote?.let { InlineNotice(it, BrandTeal) }
                     error?.let { InlineNotice(it, Danger) }
 
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                loading = true
-                                error = null
-                                try {
-                                    if (otpRequested) {
-                                        if (otp.isBlank()) {
-                                            error = context.getString(R.string.otp_required_error)
-                                            return@launch
-                                        }
-                                        if (otp.length != 6) {
-                                            error = context.getString(R.string.otp_digits_error)
-                                            return@launch
-                                        }
-                                        container.authRepository.verifyOtp(
-                                            normalizePhone(phone),
-                                            otp.trim(),
-                                            challengeId,
-                                        )
-                                        if (isRegisterMode && fullName.isNotBlank()) {
-                                            runCatching {
-                                                container.authRepository.updateProfile(
-                                                    UpdateProfileBody(
-                                                        fullName = fullName.trim(),
-                                                        email = email.trim().ifBlank { null },
-                                                    )
-                                                )
-                                            }
-                                        }
-                                    } else {
-                                        requestCode()
-                                    }
-                                } catch (failure: Throwable) {
-                                    error = friendlyError(context, failure)
-                                } finally {
-                                    loading = false
-                                }
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.Transparent,
-                        ),
-                        contentPadding = PaddingValues(0.dp),
-                        enabled = (!isRegisterMode || fullName.isNotBlank()) && phone.isNotBlank() && (!otpRequested || otp.length == 6) && !loading,
-                    ) {
+                        val isDarkTheme = isSystemInDarkTheme()
                         val isButtonActive = (!isRegisterMode || fullName.isNotBlank()) && phone.isNotBlank() && (!otpRequested || otp.length == 6) && !loading
-                        val buttonBrush = if (isButtonActive) {
-                            Brush.horizontalGradient(
-                                listOf(
-                                    BrandSkyPrimary,
-                                    BrandSkyVibrant,
-                                    BrandSkyLight,
-                                )
-                            )
-                        } else {
-                            Brush.horizontalGradient(
-                                listOf(
-                                    Slate400,
-                                    Slate400,
-                                )
-                            )
-                        }
-                        Box(
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    loading = true
+                                    error = null
+                                    try {
+                                        if (otpRequested) {
+                                            if (otp.isBlank()) {
+                                                error = context.getString(R.string.otp_required_error)
+                                                return@launch
+                                            }
+                                            if (otp.length != 6) {
+                                                error = context.getString(R.string.otp_digits_error)
+                                                return@launch
+                                            }
+                                            container.authRepository.verifyOtp(
+                                                normalizePhone(phone),
+                                                otp.trim(),
+                                                challengeId,
+                                            )
+                                            if (isRegisterMode && fullName.isNotBlank()) {
+                                                runCatching {
+                                                    container.authRepository.updateProfile(
+                                                        UpdateProfileBody(
+                                                            fullName = fullName.trim(),
+                                                            email = email.trim().ifBlank { null },
+                                                        )
+                                                    )
+                                                }
+                                            }
+                                        } else {
+                                            requestCode()
+                                        }
+                                    } catch (failure: Throwable) {
+                                        error = friendlyError(context, failure)
+                                    } finally {
+                                        loading = false
+                                    }
+                                }
+                            },
                             modifier = Modifier
-                                .fillMaxSize()
-                                .background(buttonBrush, shape = RoundedCornerShape(14.dp)),
-                            contentAlignment = Alignment.Center,
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isButtonActive) Color(0xFFF9C933) else (if (isDarkTheme) Color(0xFF334155) else Color(0xFFE2E8F0)),
+                                contentColor = if (isButtonActive) Color(0xFF111827) else (if (isDarkTheme) Color(0xFF94A3B8) else Color(0xFF64748B)),
+                                disabledContainerColor = if (isDarkTheme) Color(0xFF334155) else Color(0xFFE2E8F0),
+                                disabledContentColor = if (isDarkTheme) Color(0xFF94A3B8) else Color(0xFF64748B),
+                            ),
+                            enabled = isButtonActive,
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 if (loading) {
                                     CircularProgressIndicator(
                                         Modifier.size(18.dp),
                                         strokeWidth = 2.dp,
-                                        color = Color.White,
+                                        color = if (isButtonActive) Color(0xFF111827) else Color.Gray,
                                     )
                                     Spacer(Modifier.width(10.dp))
                                 }
@@ -718,14 +699,14 @@ private fun AuthScreen(container: AppContainer) {
                                     },
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White,
+                                    color = if (isButtonActive) Color(0xFF111827) else (if (isDarkTheme) Color(0xFF94A3B8) else Color(0xFF64748B)),
                                 )
-                                if (!loading) {
+                                if (!loading && isButtonActive) {
                                     Spacer(Modifier.width(8.dp))
                                     Icon(
                                         imageVector = Icons.Outlined.ArrowForward,
                                         contentDescription = null,
-                                        tint = Color.White,
+                                        tint = Color(0xFF111827),
                                         modifier = Modifier.size(18.dp),
                                     )
                                 }
@@ -736,7 +717,6 @@ private fun AuthScreen(container: AppContainer) {
             }
         }
     }
-}
 
 @Composable
 internal fun BrandMark(compact: Boolean = false) {

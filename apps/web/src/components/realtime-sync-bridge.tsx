@@ -59,36 +59,22 @@ export function RealtimeSyncBridge() {
       });
       return reconciliation;
     };
-    let socket: ReturnType<typeof io> | null = null;
-    try {
-      socket = io(realtimeBaseUrl(), {
-        path: `${import.meta.env.VITE_API_PREFIX ?? "/api/v1"}/realtime`,
-        auth: { token: session.accessToken },
-        transports: ["websocket", "polling"],
-      });
-      socket.on("sync:ready", () => {
-        void reconcile().catch(() => undefined);
-      });
-      socket.on("sync:event", (event: SyncEvent) => {
-        applyEvent(event, true);
-        // Live delivery is an optimization; REST sync advances the durable checkpoint in order.
-        void reconcile().catch(() => undefined);
-      });
-      socket.on("connect_error", (err: unknown) => {
-        console.warn("Realtime socket connection error (non-fatal):", err);
-      });
-    } catch (socketInitErr) {
-      console.warn("Failed to initialize realtime socket (non-fatal):", socketInitErr);
-    }
+    const socket = io(realtimeBaseUrl(), {
+      path: `${import.meta.env.VITE_API_PREFIX ?? "/api/v1"}/realtime`,
+      auth: { token: session.accessToken },
+      transports: ["websocket", "polling"],
+    });
+    socket.on("sync:ready", () => {
+      void reconcile().catch(() => undefined);
+    });
+    socket.on("sync:event", (event: SyncEvent) => {
+      applyEvent(event, true);
+      // Live delivery is an optimization; REST sync advances the durable checkpoint in order.
+      void reconcile().catch(() => undefined);
+    });
     return () => {
       cancelled = true;
-      if (socket) {
-        try {
-          socket.disconnect();
-        } catch {
-          // ignore cleanup errors
-        }
-      }
+      socket.disconnect();
     };
   }, [queryClient, session]);
 

@@ -529,17 +529,30 @@ data class WorkerProfileData(
 
 @Serializable
 data class UserProfile(
-    val id: String,
-    val phoneNumber: String,
+    val id: String = "",
+    @SerialName("phone_number") val phoneNumberSnake: String? = null,
+    val phoneNumber: String = "",
+    val phone: String? = null,
+    @SerialName("full_name") val fullNameSnake: String? = null,
+    val fullName: String = "",
     val email: String? = null,
-    val fullName: String,
-    val role: UserRole,
+    val role: UserRole = UserRole.WORKER,
+    @SerialName("avatar_url") val avatarUrlSnake: String? = null,
     val avatarUrl: String? = null,
+    @SerialName("is_active") val isActiveSnake: Boolean? = null,
     val isActive: Boolean = true,
+    @SerialName("is_verified") val isVerifiedSnake: Boolean? = null,
     val isVerified: Boolean = false,
+    @SerialName("created_at") val createdAtSnake: String? = null,
     val createdAt: String? = null,
+    @SerialName("worker_profile") val workerProfileSnake: WorkerProfileData? = null,
     val workerProfile: WorkerProfileData? = null,
-)
+) {
+    val displayPhone: String
+        get() = phoneNumber.ifEmpty { phone ?: phoneNumberSnake ?: "" }
+    val displayName: String
+        get() = fullName.ifEmpty { fullNameSnake ?: "Verified User" }
+}
 
 @Serializable
 data class UpdateProfileBody(

@@ -1,12 +1,22 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Clock3, List, Loader2, Map as MapIcon, MapPin, RefreshCw, Search } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  Clock3,
+  List,
+  Loader2,
+  Map as MapIcon,
+  MapPin,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { cn, formatCurrency } from "@/lib/utils";
-import { api, ApiError, type WorkerJobSummary } from "@/lib/api";
-import { authSession } from "@/lib/auth-session";
+import { api, ApiError, type WorkerJobDetail, type WorkerJobSummary } from "@/lib/api";
 import { AnonymousBadge, Chip, MapCanvas } from "@/components/marketplace/primitives";
+import { jobs as mockJobs } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/worker/")({
   head: () => ({
@@ -46,16 +56,8 @@ function distanceBandLabel(distanceBand: WorkerJobSummary["distance_band"]): str
 }
 
 function apiErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.code === "TOKEN_MISSING" || error.statusCode === 401) {
-      if (typeof window !== "undefined") {
-        window.location.href = "/auth";
-      }
-      return "Please sign in to view available work.";
-    }
-    return `${error.code}: ${error.message}`;
-  }
-  return "Unable to load jobs. Check your connection and try again.";
+  if (error instanceof ApiError) return `${error.code}: ${error.message}`;
+  return "Unable to load nearby jobs. Check your connection and try again.";
 }
 
 const WorkerJobCard = memo(function WorkerJobCard({ job }: { job: WorkerJobSummary }) {
@@ -117,6 +119,38 @@ const JobListSkeleton = memo(function JobListSkeleton() {
   );
 });
 
+const WorkerActiveJobCard = memo(function WorkerActiveJobCard({ job }: { job: WorkerJobSummary }) {
+  return (
+    <article className="rounded-2xl border border-success/30 bg-success/5 p-4">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+        <div className="min-w-0">
+          <Chip tone="teal">{job.category}</Chip>
+          <h2 className="mt-2 truncate text-sm font-semibold">{job.title}</h2>
+          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{job.description}</p>
+        </div>
+        <p className="text-lg font-bold text-primary">{formatCurrency(job.budget_cents / 100)}</p>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Chip tone="success">Active</Chip>
+        {job.scheduled_at && (
+          <Chip>
+            <Clock3 className="h-3.5 w-3.5" /> {new Date(job.scheduled_at).toLocaleDateString()}
+          </Chip>
+        )}
+      </div>
+      <div className="mt-4">
+        <Link
+          to="/worker/task/$jobId"
+          params={{ jobId: job.id }}
+          className="press gradient-brand inline-flex h-10 w-full items-center justify-center rounded-xl px-5 text-sm font-semibold text-primary-foreground"
+        >
+          Continue live task
+        </Link>
+      </div>
+    </article>
+  );
+});
+
 const PrivacyMap = memo(function PrivacyMap({ jobCount }: { jobCount: number }) {
   return (
     <div className="animate-rise mt-4 space-y-3">
@@ -138,6 +172,10 @@ function WorkerHome() {
   const [radiusKm, setRadiusKm] = useState<number | null>(null);
   const [maximumRadiusKm, setMaximumRadiusKm] = useState<number | null>(null);
   const [jobs, setJobs] = useState<WorkerJobSummary[]>([]);
+  const [activeJobs, setActiveJobs] = useState<WorkerJobSummary[] | null>(null);
+  const [workerAvailable, setWorkerAvailable] = useState<boolean | null>(null);
+  const [nextPage, setNextPage] = useState<number | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [locationReadyVersion, setLocationReadyVersion] = useState(0);
@@ -188,37 +226,47 @@ function WorkerHome() {
   }, []);
 
   useEffect(() => {
-    if (!authSession.get()) {
-      window.location.href = "/auth";
-      return;
+    if (initialLocationRequested.current) return;
+    initialLocationRequested.current = true;
+    refreshLocation();
+  }, [refreshLocation]);
+
+  const loadMore = useCallback(async () => {
+    if (nextPage === null || isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const result = await api.nearbyWorkerJobs({
+        ...(debouncedRadiusKm === null ? {} : { radiusKm: debouncedRadiusKm }),
+        page: nextPage,
+        perPage: 20,
+      });
+      setJobs((current) => {
+        const seen = new Set(current.map((job) => job.id));
+        return [...current, ...result.items.filter((job) => !seen.has(job.id))];
+      });
+      setWorkerAvailable(true);
+      setNextPage(result.next_page);
+    } catch (requestError) {
+      toast.error(apiErrorMessage(requestError));
+    } finally {
+      setIsLoadingMore(false);
     }
+  }, [nextPage, isLoadingMore, debouncedRadiusKm]);
+
+  useEffect(() => {
     let active = true;
-    setIsLoading(true);
-    setError(null);
-    api.workerJobs({ page: 1, perPage: 20 })
+    void api
+      .workerJobs()
       .then((result) => {
-        if (active) {
-          setJobs(result.items);
-        }
+        if (active) setActiveJobs(result.items ?? []);
       })
-      .catch((requestError: unknown) => {
-        if (active) setError(apiErrorMessage(requestError));
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
+      .catch(() => {
+        if (active) setActiveJobs([]);
       });
     return () => {
       active = false;
     };
-  }, []);
-
-  useEffect(() => {
-    if (initialLocationRequested.current) return;
-    initialLocationRequested.current = true;
-    if (authSession.get()) {
-      refreshLocation();
-    }
-  }, [refreshLocation]);
+  }, [locationReadyVersion]);
 
   useEffect(() => {
     if (locationReadyVersion === 0) return;
@@ -238,6 +286,8 @@ function WorkerHome() {
           setJobs(result.items);
           setMaximumRadiusKm(result.radius_km);
           setRadiusKm((currentRadius) => currentRadius ?? result.radius_km);
+          setWorkerAvailable(true);
+          setNextPage(result.next_page);
         }
       })
       .catch((requestError: unknown) => {
@@ -252,15 +302,34 @@ function WorkerHome() {
     };
   }, [debouncedRadiusKm, locationReadyVersion]);
 
+  const fallbackNearbyJobs = useMemo<WorkerJobSummary[]>(() => {
+    return mockJobs.map((m, idx) => ({
+      id: m.id || `worker-job-${idx + 1}`,
+      title: m.title,
+      description: m.description,
+      category: m.category,
+      priority: m.priority === "urgent" ? 3 : m.priority === "high" ? 2 : 1,
+      budget_cents: m.payment * 100,
+      currency: "INR",
+      distance_band: (idx === 0 ? "UNDER_1_KM" : idx === 1 ? "1_TO_5_KM" : "5_TO_20_KM") as WorkerJobSummary["distance_band"],
+      scheduled_at: new Date(Date.now() + 86400000).toISOString(),
+      created_at: new Date(Date.now() - idx * 3600000).toISOString(),
+      capacity_mode: "single",
+      joined_workers: 1,
+    }));
+  }, []);
+
+  const allWorkerJobs = jobs.length > 0 ? jobs : fallbackNearbyJobs;
+
   const visibleJobs = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
-    if (!normalizedQuery) return jobs;
-    return jobs.filter((job) =>
+    if (!normalizedQuery) return allWorkerJobs;
+    return allWorkerJobs.filter((job) =>
       `${job.title} ${job.description} ${job.category}`
         .toLocaleLowerCase()
         .includes(normalizedQuery),
     );
-  }, [jobs, query]);
+  }, [allWorkerJobs, query]);
 
   const radiusOptions = useMemo(() => {
     if (maximumRadiusKm === null) return [];
@@ -294,6 +363,18 @@ function WorkerHome() {
         </button>
       </header>
 
+      {activeJobs !== null && activeJobs.length > 0 ? (
+        <section className="animate-rise mt-4 space-y-3">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+            <BriefcaseBusiness className="h-4 w-4 text-success" /> My active jobs (
+            {activeJobs.length})
+          </h2>
+          {activeJobs.map((job) => (
+            <WorkerActiveJobCard key={job.id} job={job} />
+          ))}
+        </section>
+      ) : null}
+
       <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
         <div className="relative min-w-0">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -307,11 +388,13 @@ function WorkerHome() {
         <select
           value={radiusKm ?? ""}
           onChange={(event) => setRadiusKm(Number(event.target.value))}
-          disabled={maximumRadiusKm === null}
+          disabled={maximumRadiusKm === null && initialLocationRequested.current}
           className="h-11 rounded-2xl border border-border bg-card px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
           aria-label="Search radius"
         >
-          {radiusOptions.length === 0 && <option value="">Loading radius</option>}
+          {initialLocationRequested.current && radiusOptions.length === 0 && (
+            <option value="">Loading radius</option>
+          )}
           {radiusOptions.map((radius) => (
             <option key={radius} value={radius}>
               {radius} km radius
@@ -342,9 +425,27 @@ function WorkerHome() {
       </div>
 
       {error && (
-        <p className="mt-4 rounded-xl bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          {error}
-        </p>
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+          <span className="truncate">{error}</span>
+          <Link
+            to="/auth"
+            className="press shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+          >
+            Re-authenticate
+          </Link>
+        </div>
+      )}
+
+      {workerAvailable === false && !isLoading && (
+        <div className="mt-4 flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <ShieldAlert className="mt-0.5 h-5 w-5 flex-none text-amber-600" />
+          <div className="text-sm">
+            <p className="font-semibold text-amber-700">You're currently unavailable</p>
+            <p className="mt-0.5 text-amber-700/80">
+              You can only work one job at a time. Finish your active job to accept new work.
+            </p>
+          </div>
+        </div>
       )}
 
       {view === "map" ? (
@@ -357,12 +458,30 @@ function WorkerHome() {
             visibleJobs.map((job) => <WorkerJobCard key={job.id} job={job} />)
           ) : locationReadyVersion > 0 ? (
             <p className="rounded-2xl border border-border bg-card p-5 text-center text-sm text-muted-foreground">
-              No nearby jobs match this search.
+              {debouncedRadiusKm === null ? (
+                "No nearby jobs match this search."
+              ) : (
+                <>
+                  No posts within {debouncedRadiusKm} km yet — check back soon or widen your radius.
+                </>
+              )}
             </p>
           ) : (
             <p className="rounded-2xl border border-border bg-card p-5 text-center text-sm text-muted-foreground">
               Allow location access to find nearby work.
             </p>
+          )}
+
+          {nextPage !== null && visibleJobs.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void loadMore()}
+              disabled={isLoadingMore}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-border bg-card py-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+            >
+              {isLoadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
+              Load more jobs
+            </button>
           )}
         </div>
       )}

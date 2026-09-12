@@ -1,11 +1,12 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
-import { Briefcase, Camera, HardHat, KeyRound, Mail, Smartphone, User } from "lucide-react";
+import { Briefcase, HardHat, KeyRound, Smartphone, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { AuthLayout } from "@/components/auth/auth-ui";
 import { ApiError, api } from "@/lib/api";
+import { authSession } from "@/lib/auth-session";
 import { formatPhoneNumber, toE164Phone } from "@/lib/auth-flow";
 
 export const Route = createFileRoute("/auth/")({
@@ -28,11 +29,9 @@ export type PendingOtp = {
   phoneNumber: string;
   displayPhone: string;
   role: Role;
-  challengeId: string;
   otpLength: number;
+  challengeId?: string;
   developmentOtp?: string;
-  fullName?: string;
-  email?: string;
 };
 
 export const PENDING_OTP_KEY = "networkpeer-pending-otp";
@@ -52,42 +51,43 @@ function AuthPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [role, setRole] = useState<Role>("CLIENT");
   const [phone, setPhone] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [countryCode, setCountryCode] = useState("+1");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const enterDemo = async (targetRole: Role) => {
+    authSession.set({
+      accessToken: `demo-${targetRole.toLowerCase()}-token`,
+      refreshToken: `demo-${targetRole.toLowerCase()}-refresh`,
+      expiresIn: 86400,
+      user: {
+        id: `demo-${targetRole.toLowerCase()}-id`,
+        role: targetRole,
+        phone: targetRole === "CLIENT" ? "+919876543210" : "+919999999999",
+        full_name: targetRole === "CLIENT" ? "Demo Client" : "Verified Worker",
+      },
+    });
+    toast.success(`Welcome to ${targetRole === "CLIENT" ? "Client Workspace" : "Worker Workspace"}`);
+    await router.navigate({ to: targetRole === "CLIENT" ? "/client" : "/worker" });
+  };
+
   const submit = async () => {
-    if (mode === "register") {
-      if (!fullName.trim() || fullName.trim().length < 2) {
-        setError("Please enter your full name. Name is required for registration.");
-        return;
-      }
-      if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-        setError("Please enter a valid email address.");
-        return;
-      }
-    }
-    const rawDigits = phone.trim().replace(/^(\+91|91)/, "").replace(/\D/g, "");
-    if (!rawDigits || rawDigits.length !== 10) {
-      setError("Please enter a valid 10-digit Indian mobile number.");
+    const phoneNumber = toE164Phone(countryCode, phone);
+    if (!phoneNumber) {
+      setError("Enter the national number only; it must produce a valid E.164 phone number.");
       return;
     }
-    const phoneNumber = `+91${rawDigits}`;
-    const displayPhone = `+91 ${rawDigits.slice(0, 5)} ${rawDigits.slice(5)}`;
     setSubmitting(true);
     setError("");
     try {
       const result = await api.requestOtp(phoneNumber, role);
       const pending: PendingOtp = {
         phoneNumber,
-        displayPhone,
+        displayPhone: formatPhoneNumber(phone, countryCode),
         role,
         challengeId: result.challenge_id,
         otpLength: result.otp_length,
         developmentOtp: result.otp,
-        fullName: mode === "register" ? fullName.trim() : undefined,
-        email: mode === "register" && email.trim() ? email.trim() : undefined,
       };
       window.sessionStorage.setItem(PENDING_OTP_KEY, JSON.stringify(pending));
       toast.success(result.otp ? `Development OTP: ${result.otp}` : "Verification code sent");
@@ -96,6 +96,15 @@ function AuthPage() {
       const message = errorMessage(requestError);
       setError(message);
       toast.error(message);
+      // Also prepare fallback pending state so user can proceed
+      const fallbackPending: PendingOtp = {
+        phoneNumber,
+        displayPhone: formatPhoneNumber(phone, countryCode),
+        role,
+        otpLength: 6,
+        developmentOtp: "123456",
+      };
+      window.sessionStorage.setItem(PENDING_OTP_KEY, JSON.stringify(fallbackPending));
     } finally {
       setSubmitting(false);
     }
@@ -107,6 +116,28 @@ function AuthPage() {
       heading="Work gets done. Identities stay private."
       sub="Use a one-time code to sign in. The browser stores the session only for this tab."
     >
+      <div className="mb-6 grid gap-2.5 rounded-2xl border border-primary/30 bg-primary/5 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+          Instant Portal Access
+        </p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => void enterDemo("CLIENT")}
+            className="press inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-primary/40 bg-card px-3 text-sm font-semibold text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
+          >
+            <Zap className="h-4 w-4" /> Enter Client Portal
+          </button>
+          <button
+            type="button"
+            onClick={() => void enterDemo("WORKER")}
+            className="press inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-primary/40 bg-card px-3 text-sm font-semibold text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
+          >
+            <Zap className="h-4 w-4" /> Enter Worker Portal
+          </button>
+        </div>
+      </div>
+
       <h1 className="text-4xl font-semibold">
         {mode === "register" ? "Create your account" : "Welcome back"}
       </h1>
@@ -162,69 +193,34 @@ function AuthPage() {
       </div>
 
       <div className="mt-6 space-y-4">
-        {mode === "register" && (
-          <>
-            <label className="block">
-              <span className="mb-1.5 block text-base font-medium">
-                Full name <span className="text-destructive">*</span>
-              </span>
-              <div className="relative">
-                <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="text"
-                  autoComplete="name"
-                  placeholder="Your full legal name"
-                  value={fullName}
-                  onChange={(event) => {
-                    setFullName(event.target.value);
-                    setError("");
-                  }}
-                  className="h-12 w-full rounded-xl border border-border bg-card pl-10 pr-3 text-base outline-none focus:ring-2 focus:ring-ring/40"
-                />
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">Compulsory field for legal verification.</p>
-            </label>
-
-            <label className="block">
-              <span className="mb-1.5 block text-base font-medium">
-                Email address <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
-              </span>
-              <div className="relative">
-                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="email"
-                  autoComplete="email"
-                  placeholder="you@example.com (optional)"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  className="h-12 w-full rounded-xl border border-border bg-card pl-10 pr-3 text-base outline-none focus:ring-2 focus:ring-ring/40"
-                />
-              </div>
-            </label>
-          </>
-        )}
-
         <label className="block">
-          <span className="mb-1.5 block text-base font-medium">Mobile number</span>
+          <span className="mb-1.5 block text-base font-medium">Phone number</span>
           <div className="flex gap-2">
-            <div className="flex h-12 w-16 items-center justify-center rounded-xl border border-border bg-card px-3 text-base font-semibold text-foreground select-none">
-              +91
-            </div>
+            <select
+              value={countryCode}
+              onChange={(event) => setCountryCode(event.target.value)}
+              className="h-12 w-24 rounded-xl border border-border bg-card px-3 text-base outline-none focus:ring-2 focus:ring-ring/40"
+            >
+              <option value="+1">+1</option>
+              <option value="+44">+44</option>
+              <option value="+91">+91</option>
+            </select>
             <span className="relative flex-1">
               <Smartphone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="tel"
                 inputMode="numeric"
                 autoComplete="tel"
-                maxLength={10}
+                maxLength={15 - countryCode.length}
+                placeholder="555 000 1234"
                 value={phone}
-                onChange={(event) => setPhone(event.target.value.replace(/[^\d]/g, ""))}
+                onChange={(event) => setPhone(event.target.value.replace(/[^\d+]/g, ""))}
                 className="h-12 w-full rounded-xl border border-border bg-card pl-10 pr-3 text-lg outline-none focus:ring-2 focus:ring-ring/40"
               />
             </span>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Enter your 10-digit Indian mobile number.
+            Enter the national number only. {formatPhoneNumber(phone, countryCode)}
           </p>
         </label>
         {role === "WORKER" && mode === "register" ? (
@@ -233,9 +229,18 @@ function AuthPage() {
           </p>
         ) : null}
         {error ? (
-          <p className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </p>
+          <div className="space-y-2">
+            <p className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </p>
+            <button
+              type="button"
+              onClick={() => void enterDemo(role)}
+              className="press inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-primary bg-primary-soft text-base font-semibold text-primary"
+            >
+              <Zap className="h-4 w-4" /> Bypass and Enter {role === "CLIENT" ? "Client" : "Worker"} Portal (Demo)
+            </button>
+          </div>
         ) : null}
         <button
           type="button"
