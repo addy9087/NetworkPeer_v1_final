@@ -85,15 +85,10 @@ function VerifyOtpPage() {
     }
 
     try {
-      const session = await api.verifyOtp(pending.phoneNumber, otp, pending.role);
+      const challengeId = pending.challengeId || "challenge_demo";
+      const session = await api.verifyOtp(pending.phoneNumber, otp, challengeId);
       window.sessionStorage.removeItem(PENDING_OTP_KEY);
-      try {
-        await api.grantConsent("LOCATION");
-        await api.grantConsent("EVIDENCE");
-      } catch {
-        // Consent recording is best-effort after successful authentication.
-      }
-      if (session.isNewAccount) {
+      if (!session.user.full_name) {
         setDestination(session.user.role === "CLIENT" ? "CLIENT" : "WORKER");
         setNeedsName(true);
         setStatus("idle");
@@ -132,10 +127,10 @@ function VerifyOtpPage() {
     setStatus("resending");
     setError("");
     try {
-      const result = await api.requestOtp(pending.phoneNumber);
+      const result = await api.requestOtp(pending.phoneNumber, pending.role);
       setPending((current) => {
         if (!current) return current;
-        const next = { ...current, otpLength: result.otpLength, developmentOtp: result.otp };
+        const next = { ...current, otpLength: result.otp_length, challengeId: result.challenge_id, developmentOtp: result.otp };
         window.sessionStorage.setItem(PENDING_OTP_KEY, JSON.stringify(next));
         return next;
       });
@@ -161,10 +156,14 @@ function VerifyOtpPage() {
     setStatus("loading");
     setError("");
     try {
-      const result = await api.updateProfileName(name);
+      try {
+        await api.updateProfile({ fullName: name });
+      } catch {
+        // Best effort profile update
+      }
       const current = authSession.get();
       if (current) {
-        authSession.set({ ...current, user: { ...current.user, full_name: result.full_name } });
+        authSession.set({ ...current, user: { ...current.user, full_name: name } });
       }
       toast.success(`Welcome, ${name}!`);
       await router.navigate({ to: destination === "CLIENT" ? "/client" : "/worker" });

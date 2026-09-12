@@ -30,6 +30,7 @@ export type PendingOtp = {
   displayPhone: string;
   role: Role;
   otpLength: number;
+  challengeId?: string;
   developmentOtp?: string;
 };
 
@@ -79,12 +80,13 @@ function AuthPage() {
     setSubmitting(true);
     setError("");
     try {
-      const result = await api.requestOtp(phoneNumber);
+      const result = await api.requestOtp(phoneNumber, role);
       const pending: PendingOtp = {
         phoneNumber,
         displayPhone: formatPhoneNumber(phone, countryCode),
         role,
-        otpLength: result.otpLength,
+        challengeId: result.challenge_id,
+        otpLength: result.otp_length,
         developmentOtp: result.otp,
       };
       window.sessionStorage.setItem(PENDING_OTP_KEY, JSON.stringify(pending));

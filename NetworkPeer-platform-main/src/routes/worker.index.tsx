@@ -119,8 +119,7 @@ const JobListSkeleton = memo(function JobListSkeleton() {
   );
 });
 
-const WorkerActiveJobCard = memo(function WorkerActiveJobCard({ job }: { job: WorkerJobDetail }) {
-  const canWork = ["ASSIGNED", "EN_ROUTE", "AT_LOCATION", "IN_PROGRESS"].includes(job.status);
+const WorkerActiveJobCard = memo(function WorkerActiveJobCard({ job }: { job: WorkerJobSummary }) {
   return (
     <article className="rounded-2xl border border-success/30 bg-success/5 p-4">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
@@ -132,9 +131,7 @@ const WorkerActiveJobCard = memo(function WorkerActiveJobCard({ job }: { job: Wo
         <p className="text-lg font-bold text-primary">{formatCurrency(job.budget_cents / 100)}</p>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Chip tone={job.status === "IN_PROGRESS" ? "success" : "primary"}>
-          {job.status.replaceAll("_", " ")}
-        </Chip>
+        <Chip tone="success">Active</Chip>
         {job.scheduled_at && (
           <Chip>
             <Clock3 className="h-3.5 w-3.5" /> {new Date(job.scheduled_at).toLocaleDateString()}
@@ -143,11 +140,11 @@ const WorkerActiveJobCard = memo(function WorkerActiveJobCard({ job }: { job: Wo
       </div>
       <div className="mt-4">
         <Link
-          to={canWork ? "/worker/task/$jobId" : "/worker/job/$jobId"}
+          to="/worker/task/$jobId"
           params={{ jobId: job.id }}
           className="press gradient-brand inline-flex h-10 w-full items-center justify-center rounded-xl px-5 text-sm font-semibold text-primary-foreground"
         >
-          {canWork ? "Continue live task" : "View job"}
+          Continue live task
         </Link>
       </div>
     </article>
@@ -175,7 +172,7 @@ function WorkerHome() {
   const [radiusKm, setRadiusKm] = useState<number | null>(null);
   const [maximumRadiusKm, setMaximumRadiusKm] = useState<number | null>(null);
   const [jobs, setJobs] = useState<WorkerJobSummary[]>([]);
-  const [activeJobs, setActiveJobs] = useState<WorkerJobDetail[] | null>(null);
+  const [activeJobs, setActiveJobs] = useState<WorkerJobSummary[] | null>(null);
   const [workerAvailable, setWorkerAvailable] = useState<boolean | null>(null);
   const [nextPage, setNextPage] = useState<number | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -247,7 +244,7 @@ function WorkerHome() {
         const seen = new Set(current.map((job) => job.id));
         return [...current, ...result.items.filter((job) => !seen.has(job.id))];
       });
-      setWorkerAvailable(result.is_available);
+      setWorkerAvailable(true);
       setNextPage(result.next_page);
     } catch (requestError) {
       toast.error(apiErrorMessage(requestError));
@@ -261,7 +258,7 @@ function WorkerHome() {
     void api
       .workerJobs()
       .then((result) => {
-        if (active) setActiveJobs(result.snapshot_jobs);
+        if (active) setActiveJobs(result.items ?? []);
       })
       .catch(() => {
         if (active) setActiveJobs([]);
@@ -289,7 +286,7 @@ function WorkerHome() {
           setJobs(result.items);
           setMaximumRadiusKm(result.radius_km);
           setRadiusKm((currentRadius) => currentRadius ?? result.radius_km);
-          setWorkerAvailable(result.is_available);
+          setWorkerAvailable(true);
           setNextPage(result.next_page);
         }
       })

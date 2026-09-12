@@ -166,7 +166,7 @@ export function SubmissionReviewPane({
                     ? "success"
                     : currentItem.status === "redo_requested" || currentItem.status === "rejected"
                     ? "danger"
-                    : "accent"
+                    : "primary"
                 }
               >
                 {currentItem.status.replace("_", " ")}
