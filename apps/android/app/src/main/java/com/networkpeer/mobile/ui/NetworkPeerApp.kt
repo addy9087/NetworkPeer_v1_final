@@ -806,6 +806,7 @@ private fun AuthScreen(container: AppContainer) {
                                             challengeId = challengeId.ifBlank { null },
                                             fullName = if (isRegisterMode) fullName.trim() else null,
                                             mobileNumber = if (isRegisterMode) normalizedPhone.ifBlank { null } else null,
+                                            role = role,
                                         )
                                         if (isRegisterMode && (fullName.isNotBlank() || phone.isNotBlank())) {
                                             runCatching {

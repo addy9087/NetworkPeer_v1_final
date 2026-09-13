@@ -220,6 +220,7 @@ data class EmailOtpVerifyBody(
     @SerialName("full_name") val fullName: String? = null,
     @SerialName("mobile_number") val mobileNumber: String? = null,
     val transport: String = "native",
+    val role: UserRole? = null,
 )
 
 @Serializable
